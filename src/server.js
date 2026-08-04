@@ -4,6 +4,7 @@
 const express = require("express");
 const path = require("path");
 const { getDb } = require("./db/connection");
+const { layout } = require("./views/layout");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,17 +15,16 @@ app.use(express.static(path.join(__dirname, "public")));
 // Render (and any monitor) can hit this to confirm the app is alive.
 app.get("/healthz", (req, res) => res.json({ status: "ok" }));
 
-// Every response should make clear this is a sandbox, never mistaken for the real system.
-app.use((req, res, next) => {
-  res.locals.sandboxBanner = "SANDBOX — TEST DATA";
-  next();
-});
-
-// Feature routes are added one file at a time under src/routes/, e.g.:
-// app.use("/products", require("./routes/products"));
+// Feature routes are added one file at a time under src/routes/.
+app.use("/rfqs", require("./routes/rfqs"));
 
 app.get("/", (req, res) => {
-  res.send(`<h1>PM International Sandbox</h1><p>${res.locals.sandboxBanner}</p>`);
+  res.send(
+    layout({
+      title: "Home",
+      bodyHtml: `<h1>PM International Sandbox</h1><p><a href="/rfqs">View RFQs</a></p>`,
+    })
+  );
 });
 
 app.listen(PORT, () => {
