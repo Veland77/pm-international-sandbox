@@ -3,7 +3,8 @@
 // Run with: npm run seed           (always reseeds)
 //           npm run seed:if-empty  (only seeds if the database has no tables yet)
 
-const { getDb } = require("../src/db/connection");
+const path = require("node:path");
+const { getDb, DB_PATH } = require("../src/db/connection");
 const { SCHEMA } = require("../src/db/schema");
 
 const db = getDb();
@@ -245,3 +246,8 @@ const seedTransaction = db.transaction(() => {
 
 seedTransaction();
 console.log("Seeded fictional CRM/RFQ test data.");
+
+// TEMPORARY diagnostic logging — remove once the table-not-found issue is resolved.
+console.log("DEBUG seed.js DB_PATH:", path.resolve(DB_PATH));
+const seededTables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+console.log("DEBUG seed.js tables:", seededTables.map((t) => t.name));
