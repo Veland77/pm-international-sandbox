@@ -1,0 +1,18 @@
+{
+  "name": "pm-international-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Fictional-data sandbox for the PM International business system redesign.",
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "node src/server.js",
+    "start": "node src/server.js",
+    "seed": "node seed/seed.js",
+    "seed:if-empty": "node seed/seed.js --if-empty",
+    "test": "node --test tests/"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "better-sqlite3": "^11.3.0"
+  }
+}

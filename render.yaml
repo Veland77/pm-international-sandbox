@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: pm-international-sandbox
+    runtime: node
+    plan: pro
+    buildCommand: npm install && npm run seed:if-empty
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    disk:
+      name: sandbox-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_PATH
+        value: /data/sandbox.db
+    domains:
+      - sandbox.litleholm.no
