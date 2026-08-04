@@ -3,8 +3,8 @@ services:
     name: pm-international-sandbox
     runtime: node
     plan: pro
-    buildCommand: npm install && npm run seed:if-empty
-    startCommand: npm start
+    buildCommand: npm install
+    startCommand: npm run seed:if-empty && npm start
     healthCheckPath: /healthz
     autoDeploy: true
     disk:
