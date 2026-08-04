@@ -1,6 +1,3 @@
-schema.js (v2 — adds materials, product_forms, standards)
-1
-100%
 // src/db/schema.js
 // Table definitions for the CRM + RFQ quoting pilot module.
 // Structure mirrors PM International's real workflow (RFQ -> line items -> quote -> quote line items)

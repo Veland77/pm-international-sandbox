@@ -1,6 +1,3 @@
-seed.js (v3 — real materials/products/standards taxonomy)
-1
-100%
 // seed/seed.js
 // Fills the sandbox database with fictional CRM/RFQ data only. Never point this at real PM data.
 // Run with: npm run seed           (always reseeds)
