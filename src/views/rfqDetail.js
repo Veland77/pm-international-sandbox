@@ -4,10 +4,34 @@
 const { layout } = require("./layout");
 const { escapeHtml } = require("./htmlHelpers");
 
-function lineItemRows(lineItems) {
+function orderSummaryBlock(rfq, quote, orderSummary) {
+  const { totalOrderValueUsd, grossProfitUsd, grossProfitPct, estimatedArrivalDate } = orderSummary;
+  const profitPctText = grossProfitPct === null ? "—" : `${grossProfitPct.toFixed(1)}%`;
+
+  return `
+    <div>
+      <h2>Order Summary</h2>
+      <p>
+        Total Order Value: $${escapeHtml(totalOrderValueUsd.toFixed(2))}<br>
+        Total Gross Profit: $${escapeHtml(grossProfitUsd.toFixed(2))} (${escapeHtml(profitPctText)})
+      </p>
+      <p>
+        Customer Requested Delivery: ${escapeHtml(rfq.customer_requested_delivery_date || "—")}<br>
+        PM Promised Delivery: ${escapeHtml((quote && quote.promised_delivery_date) || "—")}<br>
+        Estimated Vendor Arrival: ${escapeHtml(estimatedArrivalDate || "—")}
+      </p>
+    </div>`;
+}
+
+function lineItemRows(lineItems, sourcingRows) {
+  const vendorByLineItemId = new Map(sourcingRows.map((r) => [r.rfq_line_item_id, r.supplier_name]));
+
   return lineItems
     .map((li) => {
       const notConverted = li.item_number_status === "Not Converted";
+      const oversized = li.length_m != null && li.length_m > 6;
+      const lengthText = li.length_m == null ? "—" : `${li.length_m} m`;
+      const vendor = vendorByLineItemId.get(li.id) || "—";
       return `
     <tr>
       <td>${escapeHtml(li.item_number || "—")}${notConverted ? " (Not Converted)" : ""}</td>
@@ -17,6 +41,8 @@ function lineItemRows(lineItems) {
       <td>${escapeHtml(li.description)}</td>
       <td>${escapeHtml(li.quantity)}</td>
       <td>${escapeHtml(li.unit)}</td>
+      <td>${escapeHtml(lengthText)}${oversized ? " ⚠ Oversized — air freight constrained" : ""}</td>
+      <td>${escapeHtml(vendor)}</td>
     </tr>`;
     })
     .join("");
@@ -90,10 +116,21 @@ function quoteSection(quote, quoteLineItems) {
     </table>`;
 }
 
-function rfqDetailPage({ rfq, lineItems, quote, quoteLineItems, supplierComparison = [] }) {
+function rfqDetailPage({
+  rfq,
+  lineItems,
+  quote,
+  quoteLineItems,
+  supplierComparison = [],
+  sourcingRows = [],
+  orderSummary,
+}) {
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
     <h1>${escapeHtml(rfq.rfq_number)} — ${escapeHtml(rfq.project_name)}</h1>
+
+    ${orderSummaryBlock(rfq, quote, orderSummary)}
+
     <p style="font-size: 1.2em"><strong>Pipeline Stage: ${escapeHtml(rfq.pipeline_stage)}</strong></p>
     <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(rfq.created_date)} &middot; Due: ${escapeHtml(rfq.due_date)}</p>
 
@@ -112,9 +149,12 @@ function rfqDetailPage({ rfq, lineItems, quote, quoteLineItems, supplierComparis
     <h2>Line Items</h2>
     <table>
       <thead>
-        <tr><th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th><th>Qty</th><th>Unit</th></tr>
+        <tr>
+          <th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th>
+          <th>Qty</th><th>Unit</th><th>Length</th><th>Vendor</th>
+        </tr>
       </thead>
-      <tbody>${lineItemRows(lineItems)}</tbody>
+      <tbody>${lineItemRows(lineItems, sourcingRows)}</tbody>
     </table>
 
     ${quoteSection(quote, quoteLineItems)}

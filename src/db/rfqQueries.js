@@ -24,7 +24,7 @@ const RFQ_QUERY = `
 `;
 
 const LINE_ITEMS_QUERY = `
-  SELECT li.id, li.description, li.quantity, li.unit,
+  SELECT li.id, li.description, li.quantity, li.unit, li.length_m,
          m.name AS material_name, pf.name AS product_form_name, s.code AS standard_code,
          inum.item_number, inum.status AS item_number_status
   FROM rfq_line_items li
@@ -33,6 +33,20 @@ const LINE_ITEMS_QUERY = `
   LEFT JOIN standards s ON s.id = li.standard_id
   LEFT JOIN item_numbers inum ON inum.rfq_line_item_id = li.id
   WHERE li.rfq_id = ?
+`;
+
+const LINE_ITEM_SOURCING_QUERY = `
+  SELECT lis.rfq_line_item_id, lis.status AS sourcing_status,
+         supplr.name AS supplier_name,
+         sq.received_date, sq.estimated_transit_days,
+         sqli.unit_price, sqli.currency, sqli.lead_time_days
+  FROM line_item_sourcing lis
+  JOIN rfq_line_items li ON li.id = lis.rfq_line_item_id
+  JOIN supplier_quote_line_items sqli ON sqli.id = lis.supplier_quote_line_item_id
+  JOIN supplier_quotes sq ON sq.id = sqli.supplier_quote_id
+  JOIN supplier_rfqs sr ON sr.id = sq.supplier_rfq_id
+  JOIN suppliers supplr ON supplr.id = sr.supplier_id
+  WHERE li.rfq_id = ? AND lis.status = 'Selected'
 `;
 
 const SUPPLIER_COMPARISON_QUERY = `
@@ -56,7 +70,7 @@ const QUOTE_QUERY = `
 `;
 
 const QUOTE_LINE_ITEMS_QUERY = `
-  SELECT qli.unit_price_usd, qli.lead_time_days, qli.margin_pct,
+  SELECT li.id AS rfq_line_item_id, qli.unit_price_usd, qli.lead_time_days, qli.margin_pct,
          li.description, li.quantity, li.unit
   FROM quote_line_items qli
   JOIN rfq_line_items li ON li.id = qli.rfq_line_item_id
@@ -87,6 +101,10 @@ function getSupplierComparison(db, rfqId) {
   return db.prepare(SUPPLIER_COMPARISON_QUERY).all(rfqId);
 }
 
+function getLineItemSourcing(db, rfqId) {
+  return db.prepare(LINE_ITEM_SOURCING_QUERY).all(rfqId);
+}
+
 module.exports = {
   listRfqs,
   getRfqById,
@@ -94,4 +112,5 @@ module.exports = {
   getLatestQuote,
   getQuoteLineItems,
   getSupplierComparison,
+  getLineItemSourcing,
 };

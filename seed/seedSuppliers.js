@@ -5,7 +5,7 @@
 
 const OPTION_LABELS = ["Option A", "Option B", "Option C"];
 
-function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, scenario) {
+function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, scenario, sourcingSpec) {
   const insertSupplierRfq = db.prepare(
     "INSERT INTO supplier_rfqs (rfq_id, supplier_id, sent_date, status) VALUES (?, ?, ?, ?)"
   );
@@ -13,8 +13,9 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
     "INSERT INTO supplier_rfq_line_items (supplier_rfq_id, rfq_line_item_id, quantity_requested) VALUES (?, ?, ?)"
   );
   const insertSupplierQuote = db.prepare(`
-    INSERT INTO supplier_quotes (supplier_rfq_id, quote_ref, received_date, availability, lead_time_days, valid_until)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO supplier_quotes
+      (supplier_rfq_id, quote_ref, received_date, availability, lead_time_days, valid_until, estimated_transit_days)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   const insertSupplierQuoteLine = db.prepare(`
     INSERT INTO supplier_quote_line_items
@@ -25,8 +26,15 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
     INSERT INTO customer_quote_options (quote_id, option_label, supplier_quote_id, notes)
     VALUES (?, ?, ?, ?)
   `);
+  const insertLineItemSourcing = db.prepare(`
+    INSERT INTO line_item_sourcing (rfq_line_item_id, supplier_quote_line_item_id, selected_date, status)
+    VALUES (?, ?, ?, 'Selected')
+  `);
 
   let optionIndex = 0;
+  // Tracks each vendor's quote-line-item id per (supplierIndex, rfqLineItemId)
+  // so the sourcing selections below can look up the right row to point at.
+  const quoteLineItemIdByKey = new Map();
 
   scenario.forEach((entry) => {
     const supplierRfqId = insertSupplierRfq.run(
@@ -50,12 +58,13 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
       "2026-01-20",
       entry.availability,
       entry.leadTimeDays,
-      "2026-04-01"
+      "2026-04-01",
+      entry.estimatedTransitDays
     ).lastInsertRowid;
 
     lineItems.forEach((li, j) => {
       const basePrice = 150 + j * 45;
-      insertSupplierQuoteLine.run(
+      const supplierQuoteLineItemId = insertSupplierQuoteLine.run(
         supplierQuoteId,
         li.id,
         Math.round(basePrice * entry.priceMultiplier * 100) / 100,
@@ -64,7 +73,8 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
         "120 x 15 x 15 cm",
         45 + j * 10,
         entry.leadTimeDays
-      );
+      ).lastInsertRowid;
+      quoteLineItemIdByKey.set(`${entry.supplierIndex}:${li.id}`, supplierQuoteLineItemId);
     });
 
     if (quoteId) {
@@ -77,6 +87,16 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
       optionIndex += 1;
     }
   });
+
+  if (sourcingSpec) {
+    lineItems.forEach((li, j) => {
+      const supplierIndex = sourcingSpec[j];
+      const supplierQuoteLineItemId = quoteLineItemIdByKey.get(`${supplierIndex}:${li.id}`);
+      if (supplierQuoteLineItemId) {
+        insertLineItemSourcing.run(li.id, supplierQuoteLineItemId, "2026-02-01");
+      }
+    });
+  }
 }
 
 module.exports = { seedSuppliersForRfq };

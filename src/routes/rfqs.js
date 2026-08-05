@@ -10,7 +10,9 @@ const {
   getLatestQuote,
   getQuoteLineItems,
   getSupplierComparison,
+  getLineItemSourcing,
 } = require("../db/rfqQueries");
+const { buildOrderSummary } = require("../db/orderSummary");
 const { rfqListPage } = require("../views/rfqList");
 const { rfqDetailPage } = require("../views/rfqDetail");
 
@@ -33,8 +35,20 @@ router.get("/:id", (req, res) => {
   const quote = getLatestQuote(db, rfq.id);
   const quoteLineItems = quote ? getQuoteLineItems(db, quote.id) : [];
   const supplierComparison = getSupplierComparison(db, rfq.id);
+  const sourcingRows = getLineItemSourcing(db, rfq.id);
+  const orderSummary = buildOrderSummary({ quoteLineItems, sourcingRows });
 
-  res.send(rfqDetailPage({ rfq, lineItems, quote, quoteLineItems, supplierComparison }));
+  res.send(
+    rfqDetailPage({
+      rfq,
+      lineItems,
+      quote,
+      quoteLineItems,
+      supplierComparison,
+      sourcingRows,
+      orderSummary,
+    })
+  );
 });
 
 module.exports = router;

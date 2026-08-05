@@ -6,7 +6,7 @@
 const { getDb } = require("../src/db/connection");
 const { SCHEMA, SCHEMA_VERSION } = require("../src/db/schema");
 const { formCodeForLineItem, materialCodeForName, buildItemNumber, markAsNotConverted } = require("../src/db/itemNumbers");
-const { SUPPLIERS, SUPPLIER_SCENARIOS_BY_RFQ_INDEX } = require("./supplierFixtures");
+const { SUPPLIERS, SUPPLIER_SCENARIOS_BY_RFQ_INDEX, LINE_ITEM_SOURCING_BY_RFQ_INDEX } = require("./supplierFixtures");
 const { seedSuppliersForRfq } = require("./seedSuppliers");
 
 const db = getDb();
@@ -35,6 +35,7 @@ const anyTablesExist = db.prepare("SELECT count(*) as n FROM sqlite_master WHERE
 // foreign key pointing at something that no longer exists.
 const TABLE_DROP_ORDER = [
   "customer_quote_options",
+  "line_item_sourcing",
   "supplier_quote_line_items",
   "item_numbers",
   "quote_line_items",
@@ -128,11 +129,11 @@ const fakeStandards = [
 // A small catalog combining material + product form + a representative standard,
 // used to build believable RFQ line items below.
 const catalogLines = [
-  { material: "Duplex Stainless Steel", form: "Pipe & Pipe Fittings", standard: "ASTM A790", description: '6" Duplex 2205 Seamless Pipe', unit: "FT" },
-  { material: "Super Duplex Stainless Steel", form: "Flanges", standard: "ASME B16.5", description: '8" 300# Super Duplex Weld Neck Flange', unit: "EA" },
-  { material: "Titanium", form: "Fasteners", standard: "MSS-SP-75", description: "Titanium Gr 2 Hex Bolt Set", unit: "EA" },
-  { material: "6% Moly", form: "Valves", standard: "API 6D", description: '4" 6% Moly Ball Valve', unit: "EA" },
-  { material: "Copper Nickel", form: "Tubing", standard: "EN 10204 3.1", description: '2" Copper Nickel 90/10 Tubing', unit: "FT" },
+  { material: "Duplex Stainless Steel", form: "Pipe & Pipe Fittings", standard: "ASTM A790", description: '6" Duplex 2205 Seamless Pipe', unit: "FT", length_m: 12.2 },
+  { material: "Super Duplex Stainless Steel", form: "Flanges", standard: "ASME B16.5", description: '8" 300# Super Duplex Weld Neck Flange', unit: "EA", length_m: null },
+  { material: "Titanium", form: "Fasteners", standard: "MSS-SP-75", description: "Titanium Gr 2 Hex Bolt Set", unit: "EA", length_m: null },
+  { material: "6% Moly", form: "Valves", standard: "API 6D", description: '4" 6% Moly Ball Valve', unit: "EA", length_m: null },
+  { material: "Copper Nickel", form: "Tubing", standard: "EN 10204 3.1", description: '2" Copper Nickel 90/10 Tubing', unit: "FT", length_m: 5.8 },
 ];
 
 const rfqStatuses = ["New", "Quoting", "Quoted", "Won", "Lost"];
@@ -163,16 +164,18 @@ const insertMaterial = db.prepare("INSERT INTO materials (name) VALUES (?)");
 const insertProductForm = db.prepare("INSERT INTO product_forms (name) VALUES (?)");
 const insertStandard = db.prepare("INSERT INTO standards (code, description) VALUES (?, ?)");
 const insertRfq = db.prepare(`
-  INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO rfqs
+    (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage,
+     created_date, due_date, customer_requested_delivery_date)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const insertRfqLine = db.prepare(`
-  INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, standard_id, description, quantity, unit)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, standard_id, description, quantity, unit, length_m)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const insertQuote = db.prepare(`
-  INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until)
-  VALUES (?, ?, ?, ?, ?, ?)
+  INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 const insertQuoteLine = db.prepare(`
   INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, margin_pct)
@@ -196,7 +199,8 @@ const setSchemaVersion = db.prepare("INSERT INTO schema_meta (version) VALUES (?
 
 const seedTransaction = db.transaction(() => {
   db.exec(`
-    DELETE FROM customer_quote_options; DELETE FROM supplier_quote_line_items;
+    DELETE FROM customer_quote_options; DELETE FROM line_item_sourcing;
+    DELETE FROM supplier_quote_line_items;
     DELETE FROM supplier_quotes; DELETE FROM supplier_rfq_line_items;
     DELETE FROM supplier_rfqs; DELETE FROM suppliers; DELETE FROM item_numbers;
     DELETE FROM schema_meta;
@@ -258,7 +262,8 @@ const seedTransaction = db.transaction(() => {
       status,
       pipelineStage,
       daysFromNow(-14 + i),
-      daysFromNow(7 + i)
+      daysFromNow(7 + i),
+      daysFromNow(45 + i)
     ).lastInsertRowid;
 
     // Give each RFQ 2-3 line items drawn from the material/product-form catalog,
@@ -277,7 +282,8 @@ const seedTransaction = db.transaction(() => {
         standardIdByCode[c.standard],
         c.description,
         quantity,
-        c.unit
+        c.unit,
+        c.length_m
       ).lastInsertRowid;
       rfqLineIds.push(lineId);
       lineItemsForSuppliers.push({ id: lineId, quantity });
@@ -319,7 +325,8 @@ const seedTransaction = db.transaction(() => {
         1,
         status === "Won" ? "Accepted" : status === "Lost" ? "Rejected" : "Sent",
         daysFromNow(-7 + i),
-        daysFromNow(21 + i)
+        daysFromNow(21 + i),
+        daysFromNow(35 + i)
       ).lastInsertRowid;
 
       rfqLineIds.forEach((rfqLineId, j) => {
@@ -355,7 +362,8 @@ const seedTransaction = db.transaction(() => {
         db,
         supplierIds,
         { rfqId, lineItems: lineItemsForSuppliers, quoteId },
-        scenario
+        scenario,
+        LINE_ITEM_SOURCING_BY_RFQ_INDEX[i]
       );
     }
   });

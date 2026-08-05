@@ -6,7 +6,7 @@
 // Bump this whenever SCHEMA changes shape. seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 4;
+const SCHEMA_VERSION = 5;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS rfqs (
   pipeline_stage TEXT NOT NULL DEFAULT 'New', -- 'New', 'Sourcing', 'Comparing Offers', 'Quoted to Customer',
                                                -- 'PO Received', 'In Production', 'Shipped', 'Delivered', 'Closed', 'Lost'
   created_date TEXT NOT NULL,
-  due_date TEXT NOT NULL
+  due_date TEXT NOT NULL,                     -- when we owe the customer a quote back
+  customer_requested_delivery_date TEXT       -- when the customer wants the goods (distinct from due_date)
 );
 
 -- Materials and product forms mirror PM's real published product taxonomy
@@ -75,7 +76,8 @@ CREATE TABLE IF NOT EXISTS rfq_line_items (
   standard_id INTEGER REFERENCES standards(id),
   description TEXT NOT NULL,
   quantity INTEGER NOT NULL,
-  unit TEXT NOT NULL                -- 'EA', 'FT', 'M'
+  unit TEXT NOT NULL,               -- 'EA', 'FT', 'M'
+  length_m REAL                     -- item length in meters, nullable (not every form has a meaningful length)
 );
 
 CREATE TABLE IF NOT EXISTS quotes (
@@ -85,7 +87,8 @@ CREATE TABLE IF NOT EXISTS quotes (
   version INTEGER NOT NULL DEFAULT 1,
   status TEXT NOT NULL,           -- 'Draft', 'Sent', 'Accepted', 'Rejected'
   created_date TEXT NOT NULL,
-  valid_until TEXT NOT NULL
+  valid_until TEXT NOT NULL,
+  promised_delivery_date TEXT     -- the delivery date PM commits to when quoting
 );
 
 CREATE TABLE IF NOT EXISTS quote_line_items (
@@ -141,7 +144,8 @@ CREATE TABLE IF NOT EXISTS supplier_quotes (
   received_date TEXT NOT NULL,
   availability TEXT NOT NULL,      -- 'In Stock', 'Make to Order'
   lead_time_days INTEGER NOT NULL,
-  valid_until TEXT NOT NULL
+  valid_until TEXT NOT NULL,
+  estimated_transit_days INTEGER NOT NULL DEFAULT 0  -- freight time on top of lead_time_days
 );
 
 CREATE TABLE IF NOT EXISTS supplier_quote_line_items (
@@ -162,6 +166,17 @@ CREATE TABLE IF NOT EXISTS customer_quote_options (
   option_label TEXT NOT NULL,      -- e.g. 'Option A'
   supplier_quote_id INTEGER NOT NULL REFERENCES supplier_quotes(id),
   notes TEXT
+);
+
+-- Which vendor is fulfilling each specific line item. Sourcing is decided
+-- per line item, not per whole RFQ — PM commonly buys different items on
+-- the same deal from different vendors.
+CREATE TABLE IF NOT EXISTS line_item_sourcing (
+  id INTEGER PRIMARY KEY,
+  rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
+  supplier_quote_line_item_id INTEGER NOT NULL REFERENCES supplier_quote_line_items(id),
+  selected_date TEXT NOT NULL,
+  status TEXT NOT NULL             -- 'Selected', 'Rejected'
 );
 
 CREATE TABLE IF NOT EXISTS item_numbers (
