@@ -35,6 +35,7 @@ app.use("/rfqs", require("./routes/freightIntake"));
 app.use("/rfqs", require("./routes/orderIntake"));
 app.use("/rfqs", require("./routes/rfqs"));
 app.use("/orders", require("./routes/orders"));
+app.use("/shipments", require("./routes/shipmentExpediting"));
 app.use("/supplier-inquiries", require("./routes/supplierInquiryAttachments")); // supplier-facing attachments only
 app.use("/supplier-inquiries", require("./routes/supplierInquiries"));
 app.use("/inquiries", require("./routes/inquiryPrint"));

@@ -380,6 +380,42 @@ textarea:focus {
   min-height: 1.4em;
 }
 
+/* Milestone edit rows — one per stage on the Expediting workscreen, each
+   with its own small inline-editable form. */
+
+.milestone-edit-row {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.milestone-edit-row:last-child {
+  border-bottom: none;
+}
+
+.milestone-edit-row h3 {
+  margin: 0 0 0.5rem 0;
+}
+
+.milestone-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
+.milestone-edit-form .field {
+  flex: 1 1 160px;
+  margin-bottom: 0;
+}
+
+.milestone-edit-form textarea {
+  min-height: 2.4em;
+}
+
+.milestone-edit-form .btn {
+  flex: 0 0 auto;
+}
+
 /* Milestone timeline — compact horizontal strip of the 6 shipment stages,
    used on the RFQ detail page (beneath Order Summary) and reused by the
    Expediting workscreen. */
