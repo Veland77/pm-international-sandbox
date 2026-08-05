@@ -114,6 +114,26 @@ Now that inquiries have a proper home, two things that were stopgaps on the RFQ 
 
 No schema changes were needed — this reads existing tables — so it shipped without a reseed.
 
+## Sourcing Inquiry creation, from an existing RFQ
+
+`GET`/`POST /rfqs/:id/inquiries(/new)` (`src/routes/inquiryIntake.js`, form in `src/views/inquiryNewForm.js`, queries/writes in `src/db/inquiryIntakeQueries.js`): pick a vendor, checkbox-select which of the RFQ's line items to include. A line item can be selected even if it's already on another inquiry — the same item commonly gets sent to multiple vendors for comparison. Submitted line-item ids are filtered against the RFQ's own line items before anything is written, so a bogus/foreign id is silently dropped rather than trusted. Same validation-preserves-input pattern as the RFQ intake form: a failed submit re-renders with everything already entered, no data written until validation passes. `inquiry_number` is generated the same way as `rfq_number` (highest existing trailing number + 1). This is an internal staff form, so full RFQ/customer context is fine here — the confidentiality boundary is about what's supplier-facing, not this creation step.
+
+## Print-friendly Sourcing Inquiry document
+
+`GET /inquiries/:id/print` (`src/routes/inquiryPrint.js`, `src/views/inquiryPrintPage.js`) — a standalone, clean HTML document with no app chrome or navigation, meant to be saved as PDF via the browser's print dialog and attached to an email manually. No PDF-generation library; browser print-to-PDF is enough.
+
+Backed by a deliberately narrow query, `getInquiryForPrint()` in `src/db/inquiryPrintQueries.js` — kept separate from `supplierInquiryQueries.js` on purpose, same reasoning as the attachment split: a narrowly-scoped query can't accidentally grow account/contact fields the way a shared one might. It selects only inquiry number, sent date, supplier name, sales rep name, and the RFQ's `due_date` — used only to compute **Response Requested By** (`due_date` minus 5 days, via the existing `addDays()` helper) and never rendered as a raw customer-facing date on its own.
+
+Document contents: PM header, inquiry number, date issued, response-requested-by date; line items (material, product form, standard, description, quantity, unit — nothing else); an explicit FCA (Free Carrier) pricing statement, since PM arranges its own freight forwarder; a checklist of what to quote back (unit price + currency, lead time, in-stock vs. make-to-order, weight/dimensions, crating cost); the assigned sales rep as the reply contact; and a list of any `supplier_inquiry_attachments`. Nothing customer-identifying appears anywhere — no account name, no contact name, no customer PO reference. `tests/inquiryPrint.test.js` asserts this directly: the print query's result has none of those keys, and the actual customer/contact name strings never appear in it.
+
+**The sandbox banner stays visible even in the printed/PDF output** — non-negotiable per the house rules, even though this page otherwise strips all chrome.
+
+The RFQ detail page gets a new "Supplier Inquiries" section (vendor, inquiry #, status, line items included, a link to the print view) plus a "+ New Sourcing Inquiry" link, since one RFQ normally spawns several inquiries to different vendors.
+
+**Verified**: created a real inquiry through the live form for a seeded RFQ, confirmed the print view renders cleanly with no customer-identifying info, and confirmed it appears correctly in the RFQ page's Supplier Inquiries list. (A duplicate submission during that verification — a local curl retry, not an app bug — left two identical test inquiries, INQ-9010 and INQ-9011, on the live sandbox. Left in place: there's no delete capability in the app yet, and building one just for this one-off cleanup wasn't worth adding a permanent, unauthenticated destructive endpoint.)
+
+No schema changes were needed — this reads/writes existing tables — so it shipped without a reseed.
+
 ## Future: margin override rule
 
 Documentation only — no code changes yet. This applies once quote creation/editing gets built, not to the RFQ intake form.
