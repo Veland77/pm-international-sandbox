@@ -82,10 +82,14 @@ const CURRENCY_RATES_QUERY = `
 `;
 
 const SUPPLIER_INQUIRIES_FOR_RFQ_QUERY = `
-  SELECT DISTINCT si.id, si.inquiry_number, s.name AS supplier_name
+  SELECT si.id, si.inquiry_number, si.status, si.sent_date, s.name AS supplier_name,
+         GROUP_CONCAT(li.description, '; ') AS line_item_descriptions
   FROM supplier_inquiries si
   JOIN suppliers s ON s.id = si.supplier_id
+  LEFT JOIN supplier_inquiry_line_items sil ON sil.supplier_inquiry_id = si.id
+  LEFT JOIN rfq_line_items li ON li.id = sil.rfq_line_item_id
   WHERE si.rfq_id = ?
+  GROUP BY si.id
   ORDER BY si.inquiry_number
 `;
 

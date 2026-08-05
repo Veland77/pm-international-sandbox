@@ -59,6 +59,31 @@ function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
     .join("");
 }
 
+function supplierInquiriesSection(rfqId, inquiries) {
+  const rows = inquiries
+    .map(
+      (inq) => `
+    <tr>
+      <td><a href="/supplier-inquiries/${inq.id}">${escapeHtml(inq.inquiry_number)}</a></td>
+      <td>${escapeHtml(inq.supplier_name)}</td>
+      <td>${escapeHtml(inq.status)}</td>
+      <td>${escapeHtml(inq.line_item_descriptions || "—")}</td>
+      <td><a href="/inquiries/${inq.id}/print">Print</a></td>
+    </tr>`
+    )
+    .join("");
+
+  return `
+    <h2>Supplier Inquiries</h2>
+    <p><a href="/rfqs/${rfqId}/inquiries/new">+ New Sourcing Inquiry</a></p>
+    <table>
+      <thead>
+        <tr><th>Inquiry #</th><th>Vendor</th><th>Status</th><th>Line Items</th><th></th></tr>
+      </thead>
+      <tbody>${rows || '<tr><td colspan="5">No inquiries sent yet.</td></tr>'}</tbody>
+    </table>`;
+}
+
 function supplierComparisonSection(rows) {
   if (!rows.length) {
     return "";
@@ -176,6 +201,8 @@ function rfqDetailPage({
     </table>
 
     ${quoteSection(quote, quoteLineItems)}
+
+    ${supplierInquiriesSection(rfq.id, supplierInquiries)}
 
     ${supplierComparisonSection(supplierComparison)}
 

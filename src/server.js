@@ -21,9 +21,11 @@ app.get("/healthz", (req, res) => res.json({ status: "ok" }));
 // GET /:id would otherwise swallow GET /rfqs/new (treating "new" as an id).
 app.use("/rfqs", require("./routes/rfqIntake"));
 app.use("/rfqs", require("./routes/rfqAttachments")); // customer attachments only — see src/db/schema.js
+app.use("/rfqs", require("./routes/inquiryIntake"));
 app.use("/rfqs", require("./routes/rfqs"));
 app.use("/supplier-inquiries", require("./routes/supplierInquiryAttachments")); // supplier-facing attachments only
 app.use("/supplier-inquiries", require("./routes/supplierInquiries"));
+app.use("/inquiries", require("./routes/inquiryPrint"));
 
 app.get("/", (req, res) => {
   res.send(
