@@ -23,6 +23,7 @@ app.use("/rfqs", require("./routes/rfqIntake"));
 app.use("/rfqs", require("./routes/rfqAttachments")); // customer attachments only — see src/db/schema.js
 app.use("/rfqs", require("./routes/rfqs"));
 app.use("/supplier-inquiries", require("./routes/supplierInquiryAttachments")); // supplier-facing attachments only
+app.use("/supplier-inquiries", require("./routes/supplierInquiries"));
 
 app.get("/", (req, res) => {
   res.send(

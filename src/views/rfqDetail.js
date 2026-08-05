@@ -70,14 +70,14 @@ function supplierComparisonSection(rows) {
         // Supplier was contacted but never sent pricing back (Declined/Expired).
         return `
     <tr>
-      <td>${escapeHtml(r.inquiry_number)}</td>
+      <td><a href="/supplier-inquiries/${r.supplier_inquiry_id}">${escapeHtml(r.inquiry_number)}</a></td>
       <td>${escapeHtml(r.supplier_name)} (${escapeHtml(r.supplier_country)})</td>
       <td colspan="6">${escapeHtml(r.outreach_status)} — no quote received</td>
     </tr>`;
       }
       return `
     <tr>
-      <td>${escapeHtml(r.inquiry_number)}</td>
+      <td><a href="/supplier-inquiries/${r.supplier_inquiry_id}">${escapeHtml(r.inquiry_number)}</a></td>
       <td>${escapeHtml(r.supplier_name)} (${escapeHtml(r.supplier_country)})</td>
       <td>${escapeHtml(r.line_item_description)}</td>
       <td>${escapeHtml(r.unit_price)} ${escapeHtml(r.currency)}</td>

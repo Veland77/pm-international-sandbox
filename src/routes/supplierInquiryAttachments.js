@@ -29,11 +29,7 @@ router.post("/:id/attachments", upload.single("file"), (req, res) => {
     mimeType: req.file.mimetype,
   });
 
-  // No dedicated inquiry page yet — the RFQ this inquiry belongs to is the
-  // closest existing view. Just redirects there; doesn't read/return any
-  // customer attachment data.
-  const rfq = db.prepare("SELECT rfq_id FROM supplier_inquiries WHERE id = ?").get(supplierInquiryId);
-  res.redirect(rfq ? `/rfqs/${rfq.rfq_id}` : "/rfqs");
+  res.redirect(`/supplier-inquiries/${supplierInquiryId}`);
 });
 
 router.get("/:id/attachments/:attachmentId", (req, res) => {
