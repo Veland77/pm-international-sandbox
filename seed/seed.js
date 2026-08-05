@@ -188,7 +188,7 @@ const insertQuote = db.prepare(`
   VALUES (?, ?, ?, ?, ?, ?, ?)
 `);
 const insertQuoteLine = db.prepare(`
-  INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, margin_pct)
+  INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
   VALUES (?, ?, ?, ?, ?)
 `);
 const insertActivity = db.prepare(`
@@ -356,7 +356,7 @@ const seedTransaction = db.transaction(() => {
           rfqLineId,
           lineItemsForSuppliers[j].unitPriceUsd,
           14 + j * 3,
-          18.5
+          18.5 // flat target margin at quoting time — actual sourced margin varies once a vendor is selected
         );
       });
 

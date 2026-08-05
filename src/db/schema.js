@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 7;
+const SCHEMA_VERSION = 8;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -99,7 +99,9 @@ CREATE TABLE IF NOT EXISTS quote_line_items (
   rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
   unit_price_usd REAL NOT NULL,
   lead_time_days INTEGER NOT NULL,
-  margin_pct REAL NOT NULL        -- internal only, never shown on customer-facing quote output
+  target_margin_pct REAL NOT NULL -- sales rep's target margin at quoting time, before a vendor is
+                                   -- sourced; compare against the computed Gross Margin once one is
+                                   -- selected (line_item_sourcing). Internal only, never shown to the customer.
 );
 
 CREATE TABLE IF NOT EXISTS activities (

@@ -109,7 +109,7 @@ function quoteSection(quote, quoteLineItems) {
       <td>${escapeHtml(qli.unit)}</td>
       <td>$${escapeHtml(qli.unit_price_usd)}</td>
       <td>${escapeHtml(qli.lead_time_days)}</td>
-      <td>${escapeHtml(qli.margin_pct)}%</td>
+      <td>${escapeHtml(qli.target_margin_pct)}%</td>
     </tr>`
     )
     .join("");
@@ -119,7 +119,7 @@ function quoteSection(quote, quoteLineItems) {
     <p>Status: ${escapeHtml(quote.status)} &middot; Created: ${escapeHtml(quote.created_date)} &middot; Valid until: ${escapeHtml(quote.valid_until)}</p>
     <table>
       <thead>
-        <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price (USD)</th><th>Lead Time (days)</th><th>Margin %</th></tr>
+        <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price (USD)</th><th>Lead Time (days)</th><th>Target Margin %</th></tr>
       </thead>
       <tbody>${quoteRows}</tbody>
     </table>`;

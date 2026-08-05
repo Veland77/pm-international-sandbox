@@ -70,7 +70,7 @@ const QUOTE_QUERY = `
 `;
 
 const QUOTE_LINE_ITEMS_QUERY = `
-  SELECT li.id AS rfq_line_item_id, qli.unit_price_usd, qli.lead_time_days, qli.margin_pct,
+  SELECT li.id AS rfq_line_item_id, qli.unit_price_usd, qli.lead_time_days, qli.target_margin_pct,
          li.description, li.quantity, li.unit
   FROM quote_line_items qli
   JOIN rfq_line_items li ON li.id = qli.rfq_line_item_id

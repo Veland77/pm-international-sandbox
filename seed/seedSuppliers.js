@@ -63,15 +63,13 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates
     ).lastInsertRowid;
 
     lineItems.forEach((li, j) => {
-      // Independent, vendor-side fictional pricing in the vendor's own
-      // currency — deliberately NOT derived from the customer's sell price,
-      // so real margin (including thin or occasionally negative) shows
-      // through once converted to USD.
-      const basePrice = 150 + j * 45;
+      // entry.unitPrices[j] is a hand-picked, independent native-currency
+      // price for this vendor/line — see supplierFixtures.js for how each
+      // one was chosen against the real currency_rates.
       const supplierQuoteLineItemId = insertSupplierQuoteLine.run(
         supplierQuoteId,
         li.id,
-        Math.round(basePrice * entry.priceMultiplier * 100) / 100,
+        entry.unitPrices[j],
         entry.currency,
         20 + j * 5,
         "120 x 15 x 15 cm",
