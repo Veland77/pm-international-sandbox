@@ -97,9 +97,22 @@ PM has exclusivity with some customers in certain markets, and suppliers must ne
 
 **Independent modules, one full set per side** (`src/storage/`, `src/db/`, `src/routes/`, `src/views/`) — `rfqAttachment*` for the customer side, `supplierInquiryAttachment*` for the supplier side. Upload uses `multer` (memory storage) for multipart parsing — the one new dependency here, since hand-rolling multipart parsing reliably isn't practical.
 
-**UI**: the RFQ detail page gets a "Customer Attachments" section labeled **"Internal only — do not share with suppliers"**, and a "Supplier-Facing Attachments" section — grouped per Sourcing Inquiry, since there's no dedicated inquiry page yet — labeled **"Confirmed clean of customer identity"**. Both have their own independent upload/list/download.
+**UI (at the time of this build)**: the RFQ detail page got a "Customer Attachments" section labeled **"Internal only — do not share with suppliers"**, and a "Supplier-Facing Attachments" section — grouped per Sourcing Inquiry, since there was no dedicated inquiry page yet — labeled **"Confirmed clean of customer identity"**, with its own independent upload/list/download. See the next section — once the inquiry page existed, the upload UI moved there.
 
 **Verified**: uploaded a test file to a customer RFQ and confirmed it appeared only in Customer Attachments, nowhere in the Supplier Comparison table or Supplier-Facing Attachments for any of that RFQ's inquiries. Uploaded a separate test file as a supplier-inquiry attachment and confirmed the reverse. `tests/attachments.test.js` encodes this as a standing check: inserting into one attachment table never surfaces when querying the other.
+
+## Sourcing Inquiry detail page
+
+Gives each Sourcing Inquiry its own page at `GET /supplier-inquiries/:id` (`src/routes/supplierInquiries.js` + `src/views/supplierInquiryDetail.js`, queries in `src/db/supplierInquiryQueries.js`), instead of everything about an inquiry living embedded on the RFQ page.
+
+Shows: supplier info, the line items requested from that vendor, the vendor's quote if one's been received (pricing, weight/dimensions, crating cost, lead time), and — per quote line item — whether it was actually **Selected** (via `line_item_sourcing`), so it's obvious at a glance which lines this vendor is fulfilling versus which went elsewhere. Deliberately excludes customer sell price/margin — nothing about PM's internal pricing belongs on a page oriented around a single vendor. The `rfq_id`/`rfq_number` it does include are for an internal staff back-link only, not shown to any supplier — this page is meant to be safe to have open while corresponding with the vendor.
+
+Now that inquiries have a proper home, two things that were stopgaps on the RFQ page changed:
+- The RFQ page's "Supplier-Facing Attachments" section is now a lightweight links list (inquiry #, vendor, attachment count) pointing to each inquiry's own page, instead of duplicating full upload widgets in two places. The single-inquiry upload/list block (`inquiryAttachmentBlock()`) is exported from `supplierInquiryAttachmentsSection.js` and reused as the real upload UI on the new page.
+- Supplier attachment upload now redirects to the inquiry's own page instead of back to the RFQ.
+- The Supplier Comparison table's Inquiry # cells now link to the inquiry page.
+
+No schema changes were needed — this reads existing tables — so it shipped without a reseed.
 
 ## Future: margin override rule
 
