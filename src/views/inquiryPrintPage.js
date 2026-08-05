@@ -4,9 +4,11 @@
 // to an email manually. Nothing customer-identifying appears anywhere: no
 // account name, no contact name, no customer PO reference. The sandbox
 // banner stays visible (including when printed) per house rules — it's
-// non-negotiable, even on a page that otherwise strips all chrome.
+// non-negotiable, even on a page that otherwise strips all chrome. Kept
+// standalone (own inline styles, not linking styles.css) so it stays
+// self-contained and reliable to print/PDF regardless of network state.
 
-const { escapeHtml } = require("./htmlHelpers");
+const { escapeHtml, formatDate } = require("./htmlHelpers");
 
 function lineItemRows(lineItems) {
   return lineItems
@@ -39,16 +41,22 @@ function inquiryPrintPage({ inquiry, lineItems, attachments, responseRequestedBy
   <meta charset="utf-8">
   <title>${escapeHtml(inquiry.inquiry_number)} — Sourcing Inquiry</title>
   <style>
-    body { font-family: Georgia, "Times New Roman", serif; margin: 2rem; color: #222; max-width: 800px; }
+    :root {
+      --color-olive: #3c4022;
+      --color-gold: #a99a5b;
+      --color-border: #d8d2bd;
+    }
+    body { font-family: Cambria, Georgia, "Times New Roman", serif; margin: 2rem; color: #2a2a20; max-width: 800px; }
     .banner { background: #b00020; color: #fff; padding: 0.5rem 1rem; font-weight: bold; margin-bottom: 1.5rem; font-family: system-ui, sans-serif; }
     .no-print { font-family: system-ui, sans-serif; }
-    header { border-bottom: 2px solid #222; padding-bottom: 1rem; margin-bottom: 1.5rem; }
-    header h1 { margin: 0 0 0.25rem 0; font-size: 1.4rem; }
+    .no-print button { background: var(--color-olive); color: #fff; border: none; padding: 0.5rem 1.1rem; border-radius: 6px; font-weight: 600; cursor: pointer; }
+    header { border-bottom: 3px solid var(--color-gold); padding-bottom: 1rem; margin-bottom: 1.5rem; }
+    header h1 { margin: 0 0 0.25rem 0; font-size: 1.4rem; color: var(--color-olive); }
     .meta p { margin: 0.15rem 0; }
     table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
-    th, td { border: 1px solid #999; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.95rem; }
-    th { background: #eee; }
-    h2 { font-size: 1.1rem; border-bottom: 1px solid #ccc; padding-bottom: 0.25rem; margin-top: 2rem; }
+    th, td { border: 1px solid var(--color-border); padding: 0.4rem 0.6rem; text-align: left; font-size: 0.95rem; }
+    th { background: #f0ede1; color: var(--color-olive); }
+    h2 { font-size: 1.1rem; color: var(--color-olive); border-bottom: 1px solid var(--color-border); padding-bottom: 0.25rem; margin-top: 2rem; }
     @media print {
       .no-print { display: none; }
       body { margin: 0.5in; }
@@ -63,8 +71,8 @@ function inquiryPrintPage({ inquiry, lineItems, attachments, responseRequestedBy
     <h1>PM International Suppliers, LLC — Sourcing Inquiry</h1>
     <div class="meta">
       <p><strong>Inquiry #:</strong> ${escapeHtml(inquiry.inquiry_number)}</p>
-      <p><strong>Date Issued:</strong> ${escapeHtml(inquiry.sent_date)}</p>
-      <p><strong>Response Requested By:</strong> ${escapeHtml(responseRequestedBy)}</p>
+      <p><strong>Date Issued:</strong> ${escapeHtml(formatDate(inquiry.sent_date))}</p>
+      <p><strong>Response Requested By:</strong> ${escapeHtml(formatDate(responseRequestedBy))}</p>
     </div>
   </header>
 

@@ -2,26 +2,48 @@
 // Renders a single RFQ's detail page: account/contact, line items, and linked quote if any.
 
 const { layout } = require("./layout");
-const { escapeHtml } = require("./htmlHelpers");
+const { escapeHtml, formatDate, formatCurrency } = require("./htmlHelpers");
 const { rfqAttachmentsSection } = require("./rfqAttachmentsSection");
 const { supplierInquiryAttachmentsSection } = require("./supplierInquiryAttachmentsSection");
+
+function marginClass(amount) {
+  if (amount == null) return "";
+  return amount >= 0 ? "text-positive" : "text-negative";
+}
 
 function orderSummaryBlock(rfq, quote, orderSummary) {
   const { totalOrderValueUsd, grossProfitUsd, grossProfitPct, estimatedArrivalDate } = orderSummary;
   const profitPctText = grossProfitPct === null ? "—" : `${grossProfitPct.toFixed(1)}%`;
 
   return `
-    <div>
+    <div class="dashboard-card">
       <h2>Order Summary</h2>
-      <p>
-        Total Order Value: $${escapeHtml(totalOrderValueUsd.toFixed(2))}<br>
-        Total Gross Profit: $${escapeHtml(grossProfitUsd.toFixed(2))} (${escapeHtml(profitPctText)})
-      </p>
-      <p>
-        Customer Requested Delivery: ${escapeHtml(rfq.customer_requested_delivery_date || "—")}<br>
-        PM Promised Delivery: ${escapeHtml((quote && quote.promised_delivery_date) || "—")}<br>
-        Estimated Vendor Arrival: ${escapeHtml(estimatedArrivalDate || "—")}
-      </p>
+      <div class="dashboard-stats">
+        <div>
+          <div class="stat-label">Pipeline Stage</div>
+          <div class="stat-value">${escapeHtml(rfq.pipeline_stage)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Total Order Value</div>
+          <div class="stat-value">${escapeHtml(formatCurrency(totalOrderValueUsd))}</div>
+        </div>
+        <div>
+          <div class="stat-label">Total Gross Profit</div>
+          <div class="stat-value ${marginClass(grossProfitUsd)}">${escapeHtml(formatCurrency(grossProfitUsd))} (${escapeHtml(profitPctText)})</div>
+        </div>
+        <div>
+          <div class="stat-label">Customer Requested Delivery</div>
+          <div class="stat-value-small">${escapeHtml(formatDate(rfq.customer_requested_delivery_date))}</div>
+        </div>
+        <div>
+          <div class="stat-label">PM Promised Delivery</div>
+          <div class="stat-value-small">${escapeHtml(formatDate(quote && quote.promised_delivery_date))}</div>
+        </div>
+        <div>
+          <div class="stat-label">Estimated Vendor Arrival</div>
+          <div class="stat-value-small">${escapeHtml(formatDate(estimatedArrivalDate))}</div>
+        </div>
+      </div>
     </div>`;
 }
 
@@ -35,10 +57,10 @@ function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
       const lengthText = li.length_m == null ? "—" : `${li.length_m} m`;
       const vendor = vendorByLineItemId.get(li.id) || "—";
       const margin = lineItemMargins.get(li.id);
-      const buyPriceText = margin ? `$${margin.buyUnitPriceUsd.toFixed(2)}` : "—";
-      const sellPriceText = margin ? `$${margin.sellUnitPriceUsd.toFixed(2)}` : "—";
+      const buyPriceText = margin ? formatCurrency(margin.buyUnitPriceUsd) : "—";
+      const sellPriceText = margin ? formatCurrency(margin.sellUnitPriceUsd) : "—";
       const marginText = margin
-        ? `$${margin.marginUnitUsd.toFixed(2)} (${margin.marginPct === null ? "—" : `${margin.marginPct.toFixed(1)}%`})`
+        ? `${formatCurrency(margin.marginUnitUsd)} (${margin.marginPct === null ? "—" : `${margin.marginPct.toFixed(1)}%`})`
         : "—";
       return `
     <tr>
@@ -53,7 +75,7 @@ function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
       <td>${escapeHtml(vendor)}</td>
       <td>${escapeHtml(buyPriceText)}</td>
       <td>${escapeHtml(sellPriceText)}</td>
-      <td>${escapeHtml(marginText)}</td>
+      <td class="${margin ? marginClass(margin.marginUnitUsd) : ""}">${escapeHtml(marginText)}</td>
     </tr>`;
     })
     .join("");
@@ -74,14 +96,16 @@ function supplierInquiriesSection(rfqId, inquiries) {
     .join("");
 
   return `
-    <h2>Supplier Inquiries</h2>
-    <p><a href="/rfqs/${rfqId}/inquiries/new">+ New Sourcing Inquiry</a></p>
-    <table>
-      <thead>
-        <tr><th>Inquiry #</th><th>Vendor</th><th>Status</th><th>Line Items</th><th></th></tr>
-      </thead>
-      <tbody>${rows || '<tr><td colspan="5">No inquiries sent yet.</td></tr>'}</tbody>
-    </table>`;
+    <div class="card">
+      <h2>Supplier Inquiries</h2>
+      <p><a class="btn btn-secondary" href="/rfqs/${rfqId}/inquiries/new">+ New Sourcing Inquiry</a></p>
+      <table>
+        <thead>
+          <tr><th>Inquiry #</th><th>Vendor</th><th>Status</th><th>Line Items</th><th></th></tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="5">No inquiries sent yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
 }
 
 function supplierComparisonSection(rows) {
@@ -105,28 +129,30 @@ function supplierComparisonSection(rows) {
       <td><a href="/supplier-inquiries/${r.supplier_inquiry_id}">${escapeHtml(r.inquiry_number)}</a></td>
       <td>${escapeHtml(r.supplier_name)} (${escapeHtml(r.supplier_country)})</td>
       <td>${escapeHtml(r.line_item_description)}</td>
-      <td>${escapeHtml(r.unit_price)} ${escapeHtml(r.currency)}</td>
+      <td>${escapeHtml(formatCurrency(r.unit_price, ""))} ${escapeHtml(r.currency)}</td>
       <td>${escapeHtml(r.lead_time_days)}</td>
       <td>${escapeHtml(r.availability)}</td>
       <td>${escapeHtml(r.weight_kg)} kg / ${escapeHtml(r.dimensions)}</td>
-      <td>${escapeHtml(r.crating_cost)} ${escapeHtml(r.currency)}</td>
+      <td>${escapeHtml(formatCurrency(r.crating_cost, ""))} ${escapeHtml(r.currency)}</td>
     </tr>`;
     })
     .join("");
 
   return `
-    <h2>Supplier Comparison</h2>
-    <table>
-      <thead>
-        <tr><th>Inquiry #</th><th>Vendor</th><th>Line Item</th><th>Unit Price</th><th>Lead Time (days)</th><th>Availability</th><th>Weight / Dimensions</th><th>Crating Cost</th></tr>
-      </thead>
-      <tbody>${tableRows}</tbody>
-    </table>`;
+    <div class="card">
+      <h2>Supplier Comparison</h2>
+      <table>
+        <thead>
+          <tr><th>Inquiry #</th><th>Vendor</th><th>Line Item</th><th>Unit Price</th><th>Lead Time (days)</th><th>Availability</th><th>Weight / Dimensions</th><th>Crating Cost</th></tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>`;
 }
 
 function quoteSection(quote, quoteLineItems) {
   if (!quote) {
-    return "<h2>Quote</h2><p>No quote yet.</p>";
+    return '<div class="card"><h2>Quote</h2><p>No quote yet.</p></div>';
   }
 
   const quoteRows = quoteLineItems
@@ -136,7 +162,7 @@ function quoteSection(quote, quoteLineItems) {
       <td>${escapeHtml(qli.description)}</td>
       <td>${escapeHtml(qli.quantity)}</td>
       <td>${escapeHtml(qli.unit)}</td>
-      <td>$${escapeHtml(qli.unit_price_usd)}</td>
+      <td>${escapeHtml(formatCurrency(qli.unit_price_usd))}</td>
       <td>${escapeHtml(qli.lead_time_days)}</td>
       <td>${escapeHtml(qli.target_margin_pct)}%</td>
     </tr>`
@@ -144,14 +170,16 @@ function quoteSection(quote, quoteLineItems) {
     .join("");
 
   return `
-    <h2>Quote ${escapeHtml(quote.quote_number)} (v${escapeHtml(quote.version)})</h2>
-    <p>Status: ${escapeHtml(quote.status)} &middot; Created: ${escapeHtml(quote.created_date)} &middot; Valid until: ${escapeHtml(quote.valid_until)}</p>
-    <table>
-      <thead>
-        <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price (USD)</th><th>Lead Time (days)</th><th>Target Margin %</th></tr>
-      </thead>
-      <tbody>${quoteRows}</tbody>
-    </table>`;
+    <div class="card">
+      <h2>Quote ${escapeHtml(quote.quote_number)} (v${escapeHtml(quote.version)})</h2>
+      <p>Status: ${escapeHtml(quote.status)} &middot; Created: ${escapeHtml(formatDate(quote.created_date))} &middot; Valid until: ${escapeHtml(formatDate(quote.valid_until))}</p>
+      <table>
+        <thead>
+          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price (USD)</th><th>Lead Time (days)</th><th>Target Margin %</th></tr>
+        </thead>
+        <tbody>${quoteRows}</tbody>
+      </table>
+    </div>`;
 }
 
 function rfqDetailPage({
@@ -170,35 +198,36 @@ function rfqDetailPage({
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
     <h1>${escapeHtml(rfq.rfq_number)} — ${escapeHtml(rfq.project_name)}</h1>
+    <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(formatDate(rfq.created_date))} &middot; Due: ${escapeHtml(formatDate(rfq.due_date))}</p>
 
     ${orderSummaryBlock(rfq, quote, orderSummary)}
 
-    <p style="font-size: 1.2em"><strong>Pipeline Stage: ${escapeHtml(rfq.pipeline_stage)}</strong></p>
-    <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(rfq.created_date)} &middot; Due: ${escapeHtml(rfq.due_date)}</p>
+    <div class="card">
+      <h2>Account</h2>
+      <p>
+        ${escapeHtml(rfq.account_name)} (${escapeHtml(rfq.industry_segment)}, ${escapeHtml(rfq.account_region)}) &mdash; ${escapeHtml(rfq.account_status)}<br>
+        Sales Rep: ${escapeHtml(rfq.sales_rep_name)}
+      </p>
+      <h2>Contact</h2>
+      <p>
+        ${escapeHtml(rfq.contact_name)}, ${escapeHtml(rfq.contact_title)}<br>
+        ${escapeHtml(rfq.contact_email)} &middot; ${escapeHtml(rfq.contact_phone)}
+      </p>
+    </div>
 
-    <h2>Account</h2>
-    <p>
-      ${escapeHtml(rfq.account_name)} (${escapeHtml(rfq.industry_segment)}, ${escapeHtml(rfq.account_region)}) &mdash; ${escapeHtml(rfq.account_status)}<br>
-      Sales Rep: ${escapeHtml(rfq.sales_rep_name)}
-    </p>
-
-    <h2>Contact</h2>
-    <p>
-      ${escapeHtml(rfq.contact_name)}, ${escapeHtml(rfq.contact_title)}<br>
-      ${escapeHtml(rfq.contact_email)} &middot; ${escapeHtml(rfq.contact_phone)}
-    </p>
-
-    <h2>Line Items</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th>
-          <th>Qty</th><th>Unit</th><th>Length</th><th>Vendor</th>
-          <th>Buy Price</th><th>Sell Price</th><th>Gross Margin</th>
-        </tr>
-      </thead>
-      <tbody>${lineItemRows(lineItems, sourcingRows, lineItemMargins)}</tbody>
-    </table>
+    <div class="card">
+      <h2>Line Items</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th>
+            <th>Qty</th><th>Unit</th><th>Length</th><th>Vendor</th>
+            <th>Buy Price</th><th>Sell Price</th><th>Gross Margin</th>
+          </tr>
+        </thead>
+        <tbody>${lineItemRows(lineItems, sourcingRows, lineItemMargins)}</tbody>
+      </table>
+    </div>
 
     ${quoteSection(quote, quoteLineItems)}
 

@@ -4,7 +4,7 @@
 // attachment systems stay fully separate. Must never read from or
 // reference rfq_attachments in any way.
 
-const { escapeHtml } = require("./htmlHelpers");
+const { escapeHtml, formatDate } = require("./htmlHelpers");
 
 // The full upload/list widget for one inquiry — used on the Sourcing
 // Inquiry detail page (src/views/supplierInquiryDetail.js), where upload
@@ -15,11 +15,13 @@ function inquiryAttachmentBlock(inquiry, attachments) {
       (a) => `
     <tr>
       <td><a href="/supplier-inquiries/${inquiry.id}/attachments/${a.id}">${escapeHtml(a.original_filename)}</a></td>
-      <td>${escapeHtml(a.uploaded_date)}</td>
+      <td>${escapeHtml(formatDate(a.uploaded_date))}</td>
       <td>${escapeHtml(a.mime_type)}</td>
     </tr>`
     )
     .join("");
+
+  const fileInputId = `inquiry-attachment-file-${inquiry.id}`;
 
   return `
     <table>
@@ -29,8 +31,12 @@ function inquiryAttachmentBlock(inquiry, attachments) {
       <tbody>${rows || '<tr><td colspan="3">No attachments yet.</td></tr>'}</tbody>
     </table>
     <form method="POST" action="/supplier-inquiries/${inquiry.id}/attachments" enctype="multipart/form-data">
-      <input type="file" name="file" required>
-      <button type="submit">Upload</button>
+      <div class="file-input">
+        <input type="file" name="file" id="${fileInputId}" class="file-input-native" required>
+        <label for="${fileInputId}" class="btn btn-secondary">Choose File</label>
+        <span class="file-input-filename">No file chosen</span>
+      </div>
+      <button type="submit" class="btn btn-primary">Upload</button>
     </form>`;
 }
 
@@ -55,14 +61,16 @@ function supplierInquiryAttachmentsSection(inquiries, attachmentsByInquiryId) {
     .join("");
 
   return `
-    <h2>Supplier-Facing Attachments</h2>
-    <p style="color: #1a7a1a; font-weight: bold;">Confirmed clean of customer identity</p>
-    <table>
-      <thead>
-        <tr><th>Inquiry #</th><th>Vendor</th><th>Attachments</th></tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>`;
+    <div class="card">
+      <h2>Supplier-Facing Attachments</h2>
+      <p class="text-positive">Confirmed clean of customer identity</p>
+      <table>
+        <thead>
+          <tr><th>Inquiry #</th><th>Vendor</th><th>Attachments</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 module.exports = { supplierInquiryAttachmentsSection, inquiryAttachmentBlock };

@@ -2,7 +2,7 @@
 // Renders the RFQ list page as a simple HTML table.
 
 const { layout } = require("./layout");
-const { escapeHtml } = require("./htmlHelpers");
+const { escapeHtml, formatDate } = require("./htmlHelpers");
 
 function rfqListPage(rfqs) {
   const rows = rfqs
@@ -14,7 +14,7 @@ function rfqListPage(rfqs) {
       <td>${escapeHtml(r.project_name)}</td>
       <td>${escapeHtml(r.status)}</td>
       <td>${escapeHtml(r.sales_rep_name)}</td>
-      <td>${escapeHtml(r.due_date)}</td>
+      <td>${escapeHtml(formatDate(r.due_date))}</td>
     </tr>`
     )
     .join("");
@@ -22,13 +22,15 @@ function rfqListPage(rfqs) {
   const body = `
     <a class="back-link" href="/">&larr; Home</a>
     <h1>RFQs</h1>
-    <p><a href="/rfqs/new">+ New RFQ</a></p>
-    <table>
-      <thead>
-        <tr><th>RFQ #</th><th>Account</th><th>Project</th><th>Status</th><th>Sales Rep</th><th>Due Date</th></tr>
-      </thead>
-      <tbody>${rows || '<tr><td colspan="6">No RFQs found.</td></tr>'}</tbody>
-    </table>`;
+    <p><a class="btn btn-primary" href="/rfqs/new">+ New RFQ</a></p>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>RFQ #</th><th>Account</th><th>Project</th><th>Status</th><th>Sales Rep</th><th>Due Date</th></tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="6">No RFQs found.</td></tr>'}</tbody>
+      </table>
+    </div>`;
 
   return layout({ title: "RFQs", bodyHtml: body });
 }

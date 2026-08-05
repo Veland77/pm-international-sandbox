@@ -43,11 +43,11 @@
         <td><select name="line_items[${index}][material_id]" required>${buildOptionsHtml(options.materials, "id", (m) => m.name, "Select material")}</select></td>
         <td><select name="line_items[${index}][product_form_id]" required>${buildOptionsHtml(options.productForms, "id", (f) => f.name, "Select product form")}</select></td>
         <td><select name="line_items[${index}][standard_id]">${buildOptionsHtml(options.standards, "id", (s) => s.code, "(none)")}</select></td>
-        <td><input type="text" name="line_items[${index}][description]" required></td>
+        <td><textarea class="auto-grow" name="line_items[${index}][description]" required></textarea></td>
         <td><input type="number" name="line_items[${index}][quantity]" min="1" required></td>
         <td><input type="text" name="line_items[${index}][unit]" required></td>
         <td><input type="number" step="0.1" name="line_items[${index}][length_m]"></td>
-        <td><button type="button" class="remove-line-item">Remove</button></td>
+        <td><button type="button" class="btn btn-secondary remove-line-item">Remove</button></td>
       </tr>`;
   }
 
@@ -56,6 +56,13 @@
     if (!body) return;
     const nextIndex = body.querySelectorAll(".line-item-row").length;
     body.insertAdjacentHTML("beforeend", lineItemRowHtml(nextIndex));
+
+    // Wire up the same auto-grow/live-validation behavior app.js applies
+    // on page load, scoped to just the row we added.
+    const newRow = body.lastElementChild;
+    if (newRow && window.PMSandbox) {
+      window.PMSandbox.wireAll(newRow);
+    }
   }
 
   document.addEventListener("DOMContentLoaded", () => {

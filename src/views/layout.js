@@ -1,26 +1,29 @@
 // src/views/layout.js
-// Shared page wrapper: sandbox banner + minimal styling, used by every page.
+// Shared page wrapper: sandbox banner + site nav + shared stylesheet/script,
+// used by every app page. src/views/inquiryPrintPage.js is the one
+// exception — it's a standalone document, not wrapped by this.
 
 function layout({ title, bodyHtml }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${title} — PM International Sandbox</title>
-  <style>
-    body { font-family: system-ui, sans-serif; margin: 2rem; color: #222; }
-    .banner { background: #b00020; color: #fff; padding: 0.5rem 1rem; font-weight: bold; margin-bottom: 1.5rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-    th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; }
-    th { background: #f0f0f0; }
-    a { color: #0645ad; }
-    h1, h2 { margin-top: 1.5rem; }
-    .back-link { display: inline-block; margin-bottom: 1rem; }
-  </style>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
 </head>
 <body>
   <div class="banner">SANDBOX — TEST DATA</div>
-  ${bodyHtml}
+  <nav class="site-nav">
+    <a class="site-title" href="/">PM International Sandbox</a>
+    <div class="site-links">
+      <a href="/rfqs">RFQs</a>
+    </div>
+  </nav>
+  <div class="page-container">
+    ${bodyHtml}
+  </div>
 </body>
 </html>`;
 }

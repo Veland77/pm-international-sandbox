@@ -38,7 +38,13 @@ app.get("/", (req, res) => {
   res.send(
     layout({
       title: "Home",
-      bodyHtml: `<h1>PM International Sandbox</h1><p><a href="/rfqs">View RFQs</a></p>`,
+      bodyHtml: `
+        <div class="card">
+          <h1>PM International Sandbox</h1>
+          <p>A fictional-data demo of the CRM + RFQ quoting pilot module.</p>
+          <p><a class="btn btn-primary" href="/rfqs">View RFQs</a></p>
+        </div>
+      `,
     })
   );
 });

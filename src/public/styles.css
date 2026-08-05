@@ -1,0 +1,410 @@
+/* src/public/styles.css
+   Site-wide design system. PM brand: dark olive + gold accents, sage
+   secondary, cream background. The "SANDBOX — TEST DATA" banner rule at
+   the bottom is intentionally NOT part of this palette — it's a safety
+   feature, not a style choice, and stays pinned to its own red. */
+
+:root {
+  --color-olive: #3c4022;
+  --color-olive-dark: #2e311a;
+  --color-gold: #a99a5b;
+  --color-sage: #8b8f5c;
+  --color-cream: #f7f4ec;
+  --color-card-bg: #ffffff;
+  --color-text: #2a2a20;
+  --color-text-muted: #6b6a5c;
+  --color-border: #e0dbc9;
+
+  --color-positive: #2e7d32;
+  --color-negative: #b00020;
+  --color-positive-on-dark: #8bd17c;
+  --color-negative-on-dark: #ff8a80;
+
+  --font-heading: Cambria, Georgia, "Times New Roman", serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  --radius: 8px;
+  --shadow-card: 0 1px 3px rgba(60, 64, 34, 0.1), 0 1px 2px rgba(60, 64, 34, 0.06);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--color-cream);
+  color: var(--color-text);
+  margin: 0;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading);
+  color: var(--color-olive);
+}
+
+a {
+  color: var(--color-olive);
+}
+
+a:hover {
+  color: var(--color-gold);
+}
+
+/* Non-negotiable — never restyle this to match the palette above. */
+.banner {
+  background: #b00020;
+  color: #fff;
+  padding: 0.5rem 1rem;
+  font-weight: bold;
+}
+
+.site-nav {
+  background: var(--color-olive);
+  color: var(--color-cream);
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.site-nav .site-title {
+  font-family: var(--font-heading);
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+}
+
+.site-nav .site-links a {
+  color: var(--color-cream);
+  text-decoration: none;
+  margin-left: 1.25rem;
+  font-weight: 500;
+  font-size: 0.95rem;
+}
+
+.site-nav .site-links a:hover {
+  color: var(--color-gold);
+}
+
+.page-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+/* Cards */
+
+.card {
+  background: var(--color-card-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+
+.card h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.card h3 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Dashboard card — Order Summary */
+
+.dashboard-card {
+  background: linear-gradient(135deg, var(--color-olive) 0%, #4a5029 100%);
+  color: var(--color-cream);
+  border-radius: var(--radius);
+  padding: 1.5rem 1.75rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+.dashboard-card h2 {
+  color: var(--color-gold);
+  margin-top: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  padding-bottom: 0.5rem;
+}
+
+.dashboard-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.stat-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-gold);
+  margin-bottom: 0.25rem;
+}
+
+.stat-value {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 700;
+}
+
+.stat-value-small {
+  font-family: var(--font-heading);
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.dashboard-card .text-positive {
+  color: var(--color-positive-on-dark);
+}
+
+.dashboard-card .text-negative {
+  color: var(--color-negative-on-dark);
+}
+
+/* Margin coloring (used outside the dashboard card too, e.g. line items table) */
+
+.text-positive {
+  color: var(--color-positive);
+  font-weight: 700;
+}
+
+.text-negative {
+  color: var(--color-negative);
+  font-weight: 700;
+}
+
+/* Buttons */
+
+.btn {
+  display: inline-block;
+  padding: 0.5rem 1.1rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: 2px solid var(--color-olive);
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.btn-primary {
+  background: var(--color-olive);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--color-olive-dark);
+}
+
+.btn-secondary {
+  background: transparent;
+  color: var(--color-olive);
+}
+
+.btn-secondary:hover {
+  background: var(--color-olive);
+  color: #fff;
+}
+
+/* Tables */
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+th,
+td {
+  border: 1px solid var(--color-border);
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  font-size: 0.92rem;
+}
+
+th {
+  background: #f0ede1;
+  font-weight: 600;
+  color: var(--color-olive);
+}
+
+/* Forms */
+
+.form-errors {
+  border: 1px solid var(--color-negative);
+  background: #fdf0f1;
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  color: var(--color-negative);
+}
+
+.form-errors strong {
+  color: var(--color-text);
+}
+
+.field {
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.field-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  font-size: 0.9rem;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+select,
+textarea {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  background: #fff;
+  color: var(--color-text);
+}
+
+textarea.auto-grow {
+  resize: none;
+  overflow: hidden;
+  min-height: 2.4em;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--color-gold);
+  box-shadow: 0 0 0 3px rgba(169, 154, 91, 0.25);
+}
+
+.field-invalid {
+  border-color: var(--color-negative) !important;
+}
+
+.field-error-message {
+  display: block;
+  color: var(--color-negative);
+  font-size: 0.82rem;
+  margin-top: 0.25rem;
+}
+
+/* Custom file input — hides the native control (which renders "Choose
+   File" / "No file chosen" in the browser's own language) in favor of a
+   label-triggered button and a JS-updated filename span, both fixed
+   English text regardless of visitor locale. */
+
+.file-input-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.file-input {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  position: relative;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.file-input-filename {
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+/* Custom date field — the native <input type="date"> stays fully
+   functional (calendar picker, ISO value submitted) but is made
+   invisible; a JS-formatted "11 Sep 2026"-style label sits underneath so
+   the browser's own locale formatting (e.g. DD.MM.YYYY) never shows. */
+
+.date-field-wrapper {
+  position: relative;
+}
+
+.date-field-wrapper input[type="date"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  width: 100%;
+  height: 100%;
+}
+
+.date-field-display {
+  display: block;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+  pointer-events: none;
+  font-size: 0.95rem;
+  min-height: 1.4em;
+}
+
+/* Responsive */
+
+@media (max-width: 900px) {
+  .dashboard-stats {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  }
+
+  th,
+  td {
+    font-size: 0.85rem;
+  }
+
+  .page-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .site-nav {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .site-nav .site-links a {
+    margin-left: 0;
+    margin-right: 1rem;
+  }
+}
