@@ -17,6 +17,7 @@ const {
 const { buildOrderSummary, buildLineItemMargins } = require("../db/orderSummary");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
+const { getOrderForRfq, getShipmentsForOrder } = require("../db/orderQueries");
 const { rfqListPage } = require("../views/rfqList");
 const { rfqDetailPage } = require("../views/rfqDetail");
 
@@ -50,6 +51,9 @@ router.get("/:id", (req, res) => {
     supplierInquiries.map((inquiry) => [inquiry.id, getSupplierInquiryAttachments(db, inquiry.id)])
   );
 
+  const order = getOrderForRfq(db, rfq.id);
+  const shipments = order ? getShipmentsForOrder(db, order.id) : [];
+
   res.send(
     rfqDetailPage({
       rfq,
@@ -63,6 +67,8 @@ router.get("/:id", (req, res) => {
       rfqAttachments,
       supplierInquiries,
       supplierInquiryAttachmentsByInquiryId,
+      order,
+      shipments,
     })
   );
 });

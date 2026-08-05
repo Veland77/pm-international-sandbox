@@ -5,6 +5,7 @@ const { layout } = require("./layout");
 const { escapeHtml, formatDate, formatCurrency } = require("./htmlHelpers");
 const { rfqAttachmentsSection } = require("./rfqAttachmentsSection");
 const { supplierInquiryAttachmentsSection } = require("./supplierInquiryAttachmentsSection");
+const { compactMilestoneTimeline } = require("./milestoneTimeline");
 
 function marginClass(amount) {
   if (amount == null) return "";
@@ -79,6 +80,33 @@ function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
     </tr>`;
     })
     .join("");
+}
+
+// Shown directly beneath the Order Summary card. Before conversion, this is
+// just the "Convert to Order" call to action (only offered once the deal is
+// Won); afterward, it's a link to the order plus each shipment's compact
+// milestone strip.
+function orderSection(rfq, order, shipments) {
+  if (!order) {
+    if (rfq.status !== "Won") return "";
+    return `
+    <div class="card">
+      <h2>Order</h2>
+      <p>This RFQ has been won. Convert it to an order once the customer's PO is in hand.</p>
+      <p><a class="btn btn-primary" href="/rfqs/${rfq.id}/convert-to-order">Convert to Order</a></p>
+    </div>`;
+  }
+
+  const timelines = shipments
+    .map((s) => compactMilestoneTimeline(s.milestones, { label: s.supplier_name || "Shipment" }))
+    .join("");
+
+  return `
+    <div class="card">
+      <h2>Order</h2>
+      <p><a href="/orders/${order.id}">${escapeHtml(order.po_number)}</a> &mdash; ${escapeHtml(order.pipeline_stage)}</p>
+      ${timelines}
+    </div>`;
 }
 
 function supplierInquiriesSection(rfqId, inquiries) {
@@ -194,6 +222,8 @@ function rfqDetailPage({
   rfqAttachments = [],
   supplierInquiries = [],
   supplierInquiryAttachmentsByInquiryId = new Map(),
+  order = null,
+  shipments = [],
 }) {
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
@@ -201,6 +231,8 @@ function rfqDetailPage({
     <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(formatDate(rfq.created_date))} &middot; Due: ${escapeHtml(formatDate(rfq.due_date))}</p>
 
     ${orderSummaryBlock(rfq, quote, orderSummary)}
+
+    ${orderSection(rfq, order, shipments)}
 
     <div class="card">
       <h2>Account</h2>
