@@ -31,39 +31,23 @@ if (seedOnlyIfEmpty && !needsReseed) {
 
 const anyTablesExist = db.prepare("SELECT count(*) as n FROM sqlite_master WHERE type='table'").get().n > 0;
 
-// Child tables first, so dropping a table never leaves another table's
-// foreign key pointing at something that no longer exists.
-const TABLE_DROP_ORDER = [
-  "customer_quote_options",
-  "line_item_sourcing",
-  "supplier_quote_line_items",
-  "item_numbers",
-  "quote_line_items",
-  "supplier_inquiry_line_items",
-  "supplier_quotes",
-  "activities",
-  "quotes",
-  "rfq_line_items",
-  "supplier_inquiries",
-  "rfqs",
-  "contacts",
-  "suppliers",
-  "accounts",
-  "users",
-  "materials",
-  "product_forms",
-  "standards",
-  "currency_rates",
-  "schema_meta",
-];
-
 if (anyTablesExist && needsReseed) {
   // Schema shape changed since this disk was last seeded. CREATE TABLE IF NOT
   // EXISTS won't add new columns to tables that already exist, so drop
   // everything and rebuild fresh — safe here since this is disposable
   // fictional demo data, never production data.
+  //
+  // Drop whatever tables actually exist right now, not a hand-maintained
+  // name list: a list drifts out of sync the moment a table gets renamed
+  // (an old-named table stays undropped but still holds live foreign keys
+  // into tables the list DOES drop). Disabling foreign key checks for the
+  // wipe also means drop order doesn't matter, which is the same fix for
+  // the same underlying problem either way.
   console.log(`Schema changed (v${existingVersion} -> v${SCHEMA_VERSION}), dropping all tables before reseeding.`);
-  TABLE_DROP_ORDER.forEach((name) => db.exec(`DROP TABLE IF EXISTS "${name}";`));
+  db.pragma("foreign_keys = OFF");
+  const existingTables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+  existingTables.forEach((t) => db.exec(`DROP TABLE IF EXISTS "${t.name}";`));
+  db.pragma("foreign_keys = ON");
 }
 
 db.exec(SCHEMA);
