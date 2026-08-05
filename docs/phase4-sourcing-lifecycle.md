@@ -33,3 +33,27 @@ Add one field to the existing `rfqs` table: `pipeline_stage`, one of: New, Sourc
 3. Extend seed.js: add 4 suppliers (one each in China, Italy, Korea, Germany), give 2-3 of the existing RFQs a full supplier-comparison scenario (multiple vendors quoted with differing price/lead-time/availability so the comparison is meaningful), generate item numbers for all existing rfq_line_items, backfill pipeline_stage on existing RFQs based on their current status field (New→New, Quoting→Sourcing, Quoted→Quoted to Customer, Won→Closed, Lost→Lost).
 4. Extend the /rfqs/:id detail page (still minimal HTML, no styling pass) to show: the pipeline_stage prominently, each line item's item number, and — when supplier quotes exist for that RFQ — a comparison table of vendor, price, lead time, availability, weight/dims, crating cost.
 5. Verify locally if possible, otherwise via push + live deploy check as before.
+
+## Correction: sourcing is per line item, not per RFQ
+
+Sourcing needs to be tracked per line item, not per whole RFQ — PM commonly buys item 1 from one vendor and item 2 from a different vendor on the same deal.
+
+**line_item_sourcing** — the source of truth for "which vendor is fulfilling this specific item." id, rfq_line_item_id, supplier_quote_line_item_id, selected_date, status (Selected, Rejected)
+
+(No `orders` table existed in the schema at the time of this correction, so there was nothing to remove there. `customer_quote_options` — the customer-facing quote-option-to-vendor-quote link — is separate and unaffected.)
+
+## New fields (added alongside the correction above)
+
+- `rfqs.customer_requested_delivery_date` — when the customer wants the goods, distinct from `due_date` (which is when they want our quote back)
+- `quotes.promised_delivery_date` — the delivery date PM commits to when quoting
+- `supplier_quotes.estimated_transit_days` — freight time to add on top of a vendor's `lead_time_days` to estimate when goods actually arrive
+- `rfq_line_items.length_m` — nullable real number, item length in meters (used to flag oversized items, e.g. length > 6m, as air-freight constrained)
+
+## RFQ detail page additions
+
+At the top of the page, above everything else: a summary block showing Total Order Value, Total Gross Profit (both $ and %, computed from customer sell price minus the selected vendor's cost per line), and the three delivery dates side by side (customer requested / PM promised / estimated vendor arrival — computed from FCA-ready date + transit days). The line items table shows which vendor was selected per line (when a selection exists) and flags any line item with length_m > 6 visibly ("⚠ Oversized — air freight constrained").
+
+Implementation notes:
+- Gross profit requires a USD figure, but vendor quotes are in EUR/CNY while customer prices are USD. `src/db/orderSummary.js` uses a small, clearly-labeled fixed demo FX table (`FIXED_DEMO_USD_RATES`) for this — fictional rates for this sandbox only, not real/live conversion.
+- Estimated vendor arrival = vendor's `received_date` + that line's `lead_time_days` (FCA-ready) + `estimated_transit_days`; the summary shows the latest arrival across all sourced lines, since the order isn't complete until the last item lands.
+- Seeded demo scenario: Barrow's line items are split across two vendors (mixed sourcing); Delta Ridge and Gulfstream stay single-vendor for contrast. Vendor cost in the seed data is derived as a fraction of the real customer price (not an independent arbitrary number), so gross profit always comes out positive in the demo.
