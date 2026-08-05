@@ -286,7 +286,11 @@ const seedTransaction = db.transaction(() => {
         c.length_m
       ).lastInsertRowid;
       rfqLineIds.push(lineId);
-      lineItemsForSuppliers.push({ id: lineId, quantity });
+      // Matches the unit price used below when a quote is issued for this
+      // RFQ, so seeded vendor costs can be derived as a fraction of the
+      // real customer price instead of drifting from it independently.
+      const customerUnitPriceUsd = 100 + j * 37.5;
+      lineItemsForSuppliers.push({ id: lineId, quantity, unitPriceUsd: customerUnitPriceUsd });
 
       const itemNumber = buildItemNumber({
         formCode: formCodeForLineItem(c.form, c.description),
@@ -333,7 +337,7 @@ const seedTransaction = db.transaction(() => {
         insertQuoteLine.run(
           quoteId,
           rfqLineId,
-          100 + j * 37.5,
+          lineItemsForSuppliers[j].unitPriceUsd,
           14 + j * 3,
           18.5
         );

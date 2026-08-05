@@ -3,6 +3,8 @@
 // items) for one RFQ's scenario from supplierFixtures.js, and links each
 // vendor quote that was actually received to a customer quote option.
 
+const { FIXED_DEMO_USD_RATES } = require("../src/db/orderSummary");
+
 const OPTION_LABELS = ["Option A", "Option B", "Option C"];
 
 function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, scenario, sourcingSpec) {
@@ -63,11 +65,16 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
     ).lastInsertRowid;
 
     lineItems.forEach((li, j) => {
-      const basePrice = 150 + j * 45;
+      // entry.priceMultiplier is this vendor's cost as a fraction of the
+      // customer's USD sell price for this same line (kept under 1 so the
+      // seeded data always shows a positive gross margin), converted into
+      // the vendor's own currency for storage/display.
+      const targetCostUsd = li.unitPriceUsd * entry.priceMultiplier;
+      const localUnitPrice = targetCostUsd / FIXED_DEMO_USD_RATES[entry.currency];
       const supplierQuoteLineItemId = insertSupplierQuoteLine.run(
         supplierQuoteId,
         li.id,
-        Math.round(basePrice * entry.priceMultiplier * 100) / 100,
+        Math.round(localUnitPrice * 100) / 100,
         entry.currency,
         20 + j * 5,
         "120 x 15 x 15 cm",

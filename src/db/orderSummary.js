@@ -59,4 +59,4 @@ function buildOrderSummary({ quoteLineItems, sourcingRows }) {
   };
 }
 
-module.exports = { buildOrderSummary, toUsd, addDays };
+module.exports = { buildOrderSummary, toUsd, addDays, FIXED_DEMO_USD_RATES };
