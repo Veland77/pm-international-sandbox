@@ -31,14 +31,37 @@ if (seedOnlyIfEmpty && !needsReseed) {
 
 const anyTablesExist = db.prepare("SELECT count(*) as n FROM sqlite_master WHERE type='table'").get().n > 0;
 
+// Child tables first, so dropping a table never leaves another table's
+// foreign key pointing at something that no longer exists.
+const TABLE_DROP_ORDER = [
+  "customer_quote_options",
+  "supplier_quote_line_items",
+  "item_numbers",
+  "quote_line_items",
+  "supplier_rfq_line_items",
+  "supplier_quotes",
+  "activities",
+  "quotes",
+  "rfq_line_items",
+  "supplier_rfqs",
+  "rfqs",
+  "contacts",
+  "suppliers",
+  "accounts",
+  "users",
+  "materials",
+  "product_forms",
+  "standards",
+  "schema_meta",
+];
+
 if (anyTablesExist && needsReseed) {
   // Schema shape changed since this disk was last seeded. CREATE TABLE IF NOT
   // EXISTS won't add new columns to tables that already exist, so drop
   // everything and rebuild fresh — safe here since this is disposable
   // fictional demo data, never production data.
   console.log(`Schema changed (v${existingVersion} -> v${SCHEMA_VERSION}), dropping all tables before reseeding.`);
-  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-  tables.forEach((t) => db.exec(`DROP TABLE IF EXISTS "${t.name}";`));
+  TABLE_DROP_ORDER.forEach((name) => db.exec(`DROP TABLE IF EXISTS "${name}";`));
 }
 
 db.exec(SCHEMA);
