@@ -117,6 +117,40 @@ test("buildOrderSummary computes order value, profit, and single-vendor arrival 
   assert.equal(summary.estimatedArrivalDate, addDays("2026-01-01", 20 + 5));
 });
 
+test("buildOrderSummary rolls up a negative per-line margin into a negative total — real signal, not suppressed", () => {
+  // Mirrors the seeded Gulfstream scenario: a selected vendor whose
+  // converted cost exceeds the customer's sell price on every line.
+  const quoteLineItems = [
+    { rfq_line_item_id: 1, quantity: 10, unit_price_usd: 100 },
+    { rfq_line_item_id: 2, quantity: 20, unit_price_usd: 137.5 },
+  ];
+  const sourcingRows = [
+    {
+      rfq_line_item_id: 1,
+      unit_price: 115,
+      currency: "EUR",
+      lead_time_days: 15,
+      received_date: "2026-01-01",
+      estimated_transit_days: 7,
+    },
+    {
+      rfq_line_item_id: 2,
+      unit_price: 150,
+      currency: "EUR",
+      lead_time_days: 15,
+      received_date: "2026-01-01",
+      estimated_transit_days: 7,
+    },
+  ];
+
+  const summary = buildOrderSummary({ quoteLineItems, sourcingRows, rates: TEST_RATES });
+
+  assert.equal(summary.totalOrderValueUsd, 10 * 100 + 20 * 137.5);
+  assert.ok(summary.totalCostUsd > summary.totalOrderValueUsd);
+  assert.ok(summary.grossProfitUsd < 0);
+  assert.ok(summary.grossProfitPct < 0);
+});
+
 test("buildOrderSummary skips lines with no sourcing selection", () => {
   const summary = buildOrderSummary({
     quoteLineItems: [{ rfq_line_item_id: 1, quantity: 1, unit_price_usd: 50 }],
