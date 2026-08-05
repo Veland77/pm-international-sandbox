@@ -8,6 +8,8 @@ const { SCHEMA, SCHEMA_VERSION } = require("../src/db/schema");
 const { formCodeForLineItem, materialCodeForName, buildItemNumber, markAsNotConverted } = require("../src/db/itemNumbers");
 const { SUPPLIERS, SUPPLIER_SCENARIOS_BY_RFQ_INDEX, LINE_ITEM_SOURCING_BY_RFQ_INDEX } = require("./supplierFixtures");
 const { seedSuppliersForRfq } = require("./seedSuppliers");
+const { MILESTONE_TYPES } = require("../src/db/shipmentMilestoneTypes");
+const { saveShipmentDocument } = require("../src/storage/shipmentDocumentStorage");
 
 const db = getDb();
 const seedOnlyIfEmpty = process.argv.includes("--if-empty");
@@ -194,13 +196,80 @@ const markItemNumberNotConverted = db.prepare(
 );
 const setSchemaVersion = db.prepare("INSERT INTO schema_meta (version) VALUES (?)");
 
+const insertPurchaseOrder = db.prepare(`
+  INSERT INTO purchase_orders (quote_id, po_number, customer_po_reference, received_date, total_value)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const insertOrder = db.prepare(
+  "INSERT INTO orders (po_id, order_date, pipeline_stage) VALUES (?, ?, ?)"
+);
+const insertOrderLineItem = db.prepare(`
+  INSERT INTO order_line_items (order_id, rfq_line_item_id, line_item_sourcing_id)
+  VALUES (?, ?, ?)
+`);
+const insertShipment = db.prepare(`
+  INSERT INTO shipments
+    (order_id, supplier_id, freight_forwarder, tracking_number, mode, origin, destination,
+     ship_date, eta, pod_received, freight_quote_id)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+const insertShipmentLineItem = db.prepare(
+  "INSERT INTO shipment_line_items (shipment_id, order_line_item_id) VALUES (?, ?)"
+);
+const insertFreightInquiry = db.prepare(`
+  INSERT INTO freight_inquiries (frq_number, rfq_id, freight_forwarder_name, sent_date, status)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const insertFreightInquiryLine = db.prepare(
+  "INSERT INTO freight_inquiry_line_items (freight_inquiry_id, rfq_line_item_id) VALUES (?, ?)"
+);
+const insertFreightQuote = db.prepare(`
+  INSERT INTO freight_quotes
+    (freight_inquiry_id, quote_ref, received_date, price, currency, transit_days, valid_until)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+const insertShipmentMilestone = db.prepare(`
+  INSERT INTO shipment_milestones (shipment_id, milestone_type, estimated_date, actual_date, notes)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const insertExpeditingLogEntry = db.prepare(`
+  INSERT INTO expediting_log (shipment_id, entry_date, contact_type, note, follow_up_date)
+  VALUES (?, ?, ?, ?, ?)
+`);
+const insertShipmentDocument = db.prepare(`
+  INSERT INTO shipment_documents (shipment_id, doc_type, original_filename, stored_filename, uploaded_date)
+  VALUES (?, ?, ?, ?, ?)
+`);
+
 const seedTransaction = db.transaction(() => {
+  // Child tables first throughout — see src/db/schema.js for the full
+  // dependency graph. The order fulfillment tables added a genuinely deep
+  // chain here (order_line_items -> line_item_sourcing -> supplier_quote_line_items,
+  // and shipments -> freight_quotes, which is itself layered under
+  // freight_inquiries -> rfqs), so this list is order-sensitive in a way
+  // that's easy to get wrong — double-check against schema.js before
+  // reordering anything.
   db.exec(`
-    DELETE FROM customer_quote_options; DELETE FROM line_item_sourcing;
+    DELETE FROM customer_quote_options;
+    DELETE FROM shipment_documents;
+    DELETE FROM expediting_log;
+    DELETE FROM shipment_milestones;
+    DELETE FROM shipment_line_items;
+    DELETE FROM order_line_items;
+    DELETE FROM shipments;
+    DELETE FROM freight_inquiry_line_items;
+    DELETE FROM freight_quotes;
+    DELETE FROM freight_inquiries;
+    DELETE FROM orders;
+    DELETE FROM purchase_orders;
+    DELETE FROM line_item_sourcing;
     DELETE FROM supplier_quote_line_items;
     DELETE FROM supplier_inquiry_attachments;
-    DELETE FROM supplier_quotes; DELETE FROM supplier_inquiry_line_items;
-    DELETE FROM supplier_inquiries; DELETE FROM suppliers; DELETE FROM item_numbers;
+    DELETE FROM supplier_quotes;
+    DELETE FROM supplier_inquiry_line_items;
+    DELETE FROM supplier_inquiries;
+    DELETE FROM suppliers;
+    DELETE FROM item_numbers;
     DELETE FROM currency_rates;
     DELETE FROM schema_meta;
     DELETE FROM activities; DELETE FROM quote_line_items; DELETE FROM quotes;
@@ -248,6 +317,8 @@ const seedTransaction = db.transaction(() => {
   let rfqCounter = 1001;
   let quoteCounter = 5001;
   let inquiryCounter = 9001;
+  let poCounter = 6001;
+  let frqCounter = 7001;
   let itemNumberSequence = 1;
   const itemNumberYear = new Date().getFullYear();
 
@@ -255,6 +326,14 @@ const seedTransaction = db.transaction(() => {
   function nextInquiryNumber() {
     return `INQ-${inquiryCounter++}`;
   }
+  function nextFrqNumber() {
+    return `FRQ-${frqCounter++}`;
+  }
+
+  // Captured per RFQ so the end-to-end order seed below (after this loop)
+  // can reference a specific RFQ's line items/quote without re-querying —
+  // index matches accountIds/fakeAccounts position.
+  const rfqDataByIndex = [];
 
   accountIds.forEach((accountId, i) => {
     const contactId = contactIdsByAccount[i][0];
@@ -389,7 +468,144 @@ const seedTransaction = db.transaction(() => {
         LINE_ITEM_SOURCING_BY_RFQ_INDEX[i]
       );
     }
+
+    rfqDataByIndex.push({ rfqId, quoteId, rfqNumber, lineItems: lineItemsForSuppliers, status });
   });
+
+  // --- Seed one complete order end-to-end (Delta Ridge Mining Co, index 2) ---
+  // Gives the Convert-to-Order and Expediting screens something real to show
+  // immediately. Delta Ridge is single-vendor (both lines sourced from Ferro
+  // Adriatica S.p.A. — see LINE_ITEM_SOURCING_BY_RFQ_INDEX[2] in
+  // supplierFixtures.js), which keeps this one shipment simple.
+  const deltaRidge = rfqDataByIndex[2];
+
+  const freightInquiryId = insertFreightInquiry.run(
+    nextFrqNumber(),
+    deltaRidge.rfqId,
+    "Mediterranean Freight Solutions",
+    daysFromNow(-30),
+    "Quoted"
+  ).lastInsertRowid;
+
+  deltaRidge.lineItems.forEach((li) => {
+    insertFreightInquiryLine.run(freightInquiryId, li.id);
+  });
+
+  const freightQuoteId = insertFreightQuote.run(
+    freightInquiryId,
+    "MFS-Q-4471",
+    daysFromNow(-28),
+    850,
+    "EUR",
+    18,
+    daysFromNow(30)
+  ).lastInsertRowid;
+
+  const deltaRidgeTotalValue = deltaRidge.lineItems.reduce(
+    (sum, li) => sum + li.unitPriceUsd * li.quantity,
+    0
+  );
+  const poId = insertPurchaseOrder.run(
+    deltaRidge.quoteId,
+    `PO-${poCounter++}`,
+    "DR-2026-0472",
+    daysFromNow(-3),
+    deltaRidgeTotalValue
+  ).lastInsertRowid;
+
+  // pipeline_stage "Shipped" is deliberately picked so this order shows a mix
+  // of completed and upcoming milestones, not an all-done or all-pending timeline.
+  const orderId = insertOrder.run(poId, daysFromNow(-3), "Shipped").lastInsertRowid;
+
+  const ferroSupplierId = supplierIds[1]; // Ferro Adriatica S.p.A. — see supplierFixtures.js SUPPLIERS[1]
+
+  const sourcingPlaceholders = deltaRidge.lineItems.map(() => "?").join(",");
+  const sourcingRows = db
+    .prepare(
+      `SELECT id, rfq_line_item_id FROM line_item_sourcing
+       WHERE rfq_line_item_id IN (${sourcingPlaceholders}) AND status = 'Selected'`
+    )
+    .all(...deltaRidge.lineItems.map((li) => li.id));
+  const sourcingIdByLineItemId = new Map(sourcingRows.map((r) => [r.rfq_line_item_id, r.id]));
+
+  const orderLineItemIds = deltaRidge.lineItems.map(
+    (li) => insertOrderLineItem.run(orderId, li.id, sourcingIdByLineItemId.get(li.id)).lastInsertRowid
+  );
+
+  const shipmentId = insertShipment.run(
+    orderId,
+    ferroSupplierId,
+    "Mediterranean Freight Solutions",
+    "MFS-IT-88213",
+    "Ocean",
+    "Genoa, Italy",
+    "Lakeland, FL",
+    daysFromNow(-16),
+    daysFromNow(15),
+    null,
+    freightQuoteId
+  ).lastInsertRowid;
+
+  orderLineItemIds.forEach((orderLineItemId) => {
+    insertShipmentLineItem.run(shipmentId, orderLineItemId);
+  });
+
+  // Three completed milestones, three upcoming — matches the "Shipped" stage above.
+  const milestoneDetailsByType = {
+    "Production": {
+      estimated: daysFromNow(-25),
+      actual: daysFromNow(-24),
+      notes: "Production completed on schedule.",
+    },
+    "Ready for Pickup/FCA": {
+      estimated: daysFromNow(-20),
+      actual: daysFromNow(-19),
+      notes: "Goods ready for pickup at Ferro's facility.",
+    },
+    "Transit to Port/Airport": {
+      estimated: daysFromNow(-17),
+      actual: daysFromNow(-16),
+      notes: "Trucked to Genoa port.",
+    },
+    "Ocean/Air Transport": {
+      estimated: daysFromNow(5),
+      actual: null,
+      notes: "In transit via ocean freight.",
+    },
+    "Customs Clearance": { estimated: daysFromNow(12), actual: null, notes: null },
+    "Final Delivery": { estimated: daysFromNow(15), actual: null, notes: null },
+  };
+  MILESTONE_TYPES.forEach((type) => {
+    const m = milestoneDetailsByType[type];
+    insertShipmentMilestone.run(shipmentId, type, m.estimated, m.actual, m.notes);
+  });
+
+  insertExpeditingLogEntry.run(
+    shipmentId,
+    daysFromNow(-18),
+    "Call",
+    "Confirmed FCA pickup date with Ferro Adriatica's logistics desk.",
+    null
+  );
+  insertExpeditingLogEntry.run(
+    shipmentId,
+    daysFromNow(-10),
+    "Email",
+    "Requested updated ETA from Mediterranean Freight Solutions.",
+    daysFromNow(3)
+  );
+
+  const millCertificateFilename = saveShipmentDocument(
+    Buffer.from("Fictional Mill Certificate -- sandbox test data only, not a real certification.\n"),
+    "mill-certificate.txt"
+  );
+  insertShipmentDocument.run(
+    shipmentId,
+    "Mill Certificate",
+    "mill-certificate.txt",
+    millCertificateFilename,
+    daysFromNow(-16)
+  );
 
   setSchemaVersion.run(SCHEMA_VERSION);
 });

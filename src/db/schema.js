@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 10;
+const SCHEMA_VERSION = 11;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -238,6 +238,144 @@ CREATE TABLE IF NOT EXISTS supplier_inquiry_attachments (
   stored_filename TEXT NOT NULL UNIQUE,
   uploaded_date TEXT NOT NULL,
   mime_type TEXT NOT NULL
+);
+
+-- Order fulfillment lifecycle: converting a won RFQ into a purchase order,
+-- grouping its line items into shipments, requesting freight quotes, and
+-- the day-to-day expediting work (milestones, contact log, documents)
+-- once goods are moving. See docs/ for the full design.
+
+-- Once created, this is the record of the customer's PO against a
+-- specific accepted quote. po_number is PM's own internal reference
+-- (generated like rfq_number); customer_po_reference is whatever the
+-- customer's own PO number/reference actually is, typed in at conversion.
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY,
+  quote_id INTEGER NOT NULL REFERENCES quotes(id),
+  po_number TEXT NOT NULL UNIQUE,
+  customer_po_reference TEXT NOT NULL,
+  received_date TEXT NOT NULL,
+  total_value REAL NOT NULL
+);
+
+-- The order's own pipeline_stage takes over as the live tracker once it
+-- exists — the originating rfqs.pipeline_stage freezes at 'PO Received'
+-- permanently and is never updated again.
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY,
+  po_id INTEGER NOT NULL REFERENCES purchase_orders(id),
+  order_date TEXT NOT NULL,
+  pipeline_stage TEXT NOT NULL DEFAULT 'PO Received' -- 'PO Received', 'In Production', 'Shipped',
+                                                       -- 'Delivered', 'Closed', 'Lost'
+);
+
+-- Reuses the existing sourcing decision (line_item_sourcing) rather than
+-- re-asking which vendor fulfills this line — conversion requires every
+-- rfq_line_item to already have a Selected sourcing row.
+CREATE TABLE IF NOT EXISTS order_line_items (
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
+  line_item_sourcing_id INTEGER NOT NULL REFERENCES line_item_sourcing(id)
+);
+
+-- supplier_id is nullable: auto-populated for the common case (all of a
+-- shipment's lines come from one vendor), left null when lines from
+-- different vendors are deliberately combined into one shipment — in
+-- that case origin/destination are entered/edited manually instead.
+-- freight_quote_id optionally links back to a freight_quotes row already
+-- obtained during RFQ quoting (see freight_inquiries below), so a
+-- freight request doesn't need to be redone unless something's changed.
+CREATE TABLE IF NOT EXISTS shipments (
+  id INTEGER PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id),
+  supplier_id INTEGER REFERENCES suppliers(id),
+  freight_forwarder TEXT,
+  tracking_number TEXT,
+  mode TEXT,               -- e.g. 'Ocean', 'Air', 'Truck' — free text
+  origin TEXT,
+  destination TEXT,
+  ship_date TEXT,
+  eta TEXT,
+  pod_received TEXT,       -- nullable date proof-of-delivery was actually received, not a bare flag
+  freight_quote_id INTEGER REFERENCES freight_quotes(id)
+);
+
+-- Which order lines travel together in a given shipment.
+CREATE TABLE IF NOT EXISTS shipment_line_items (
+  id INTEGER PRIMARY KEY,
+  shipment_id INTEGER NOT NULL REFERENCES shipments(id),
+  order_line_item_id INTEGER NOT NULL REFERENCES order_line_items(id)
+);
+
+-- A freight quote request ("FRQ"), sent to a freight forwarder. Tied to
+-- the RFQ, not a shipment — freight pricing is part of what builds the
+-- customer quote in the first place (vendor price + crating + freight),
+-- well before there's a PO or a shipment. freight_forwarder_name is
+-- plain text for now; no separate forwarder table yet.
+CREATE TABLE IF NOT EXISTS freight_inquiries (
+  id INTEGER PRIMARY KEY,
+  frq_number TEXT NOT NULL UNIQUE,  -- e.g. FRQ-7001, same style/generation as rfq_number/inquiry_number
+  rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
+  freight_forwarder_name TEXT NOT NULL,
+  sent_date TEXT NOT NULL,
+  status TEXT NOT NULL              -- 'Sent', 'Quoted', 'Declined'
+);
+
+-- Which specific RFQ line items a given freight request covers — may be a
+-- subset of the RFQ, not necessarily all of it.
+CREATE TABLE IF NOT EXISTS freight_inquiry_line_items (
+  id INTEGER PRIMARY KEY,
+  freight_inquiry_id INTEGER NOT NULL REFERENCES freight_inquiries(id),
+  rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id)
+);
+
+CREATE TABLE IF NOT EXISTS freight_quotes (
+  id INTEGER PRIMARY KEY,
+  freight_inquiry_id INTEGER NOT NULL REFERENCES freight_inquiries(id),
+  quote_ref TEXT NOT NULL,
+  received_date TEXT NOT NULL,
+  price REAL NOT NULL,
+  currency TEXT NOT NULL,
+  transit_days INTEGER NOT NULL,
+  valid_until TEXT NOT NULL
+);
+
+-- All 6 rows are auto-created (blank) whenever a shipment is created, so
+-- the Expediting screen always shows the full timeline ready for inline
+-- editing rather than requiring someone to add each stage manually.
+CREATE TABLE IF NOT EXISTS shipment_milestones (
+  id INTEGER PRIMARY KEY,
+  shipment_id INTEGER NOT NULL REFERENCES shipments(id),
+  milestone_type TEXT NOT NULL,   -- 'Production', 'Ready for Pickup/FCA', 'Transit to Port/Airport',
+                                   -- 'Ocean/Air Transport', 'Customs Clearance', 'Final Delivery'
+  estimated_date TEXT,
+  actual_date TEXT,
+  notes TEXT
+);
+
+-- A simple running contact log for expediting a shipment — newest first.
+CREATE TABLE IF NOT EXISTS expediting_log (
+  id INTEGER PRIMARY KEY,
+  shipment_id INTEGER NOT NULL REFERENCES shipments(id),
+  entry_date TEXT NOT NULL,
+  contact_type TEXT NOT NULL,     -- 'Call', 'Email', 'Note'
+  note TEXT NOT NULL,
+  follow_up_date TEXT
+);
+
+-- What QA attaches as certificates/paperwork arrive. Same storage pattern
+-- as the earlier attachment work (persistent disk, randomized filenames)
+-- but no confidentiality split needed here — this isn't customer- or
+-- supplier-facing, just internal order paperwork.
+CREATE TABLE IF NOT EXISTS shipment_documents (
+  id INTEGER PRIMARY KEY,
+  shipment_id INTEGER NOT NULL REFERENCES shipments(id),
+  doc_type TEXT NOT NULL,         -- 'Packing List', 'Certificate of Compliance', 'Mill Certificate',
+                                   -- 'Commercial Invoice', 'Bill of Lading'
+  original_filename TEXT NOT NULL,
+  stored_filename TEXT NOT NULL UNIQUE,
+  uploaded_date TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schema_meta (
