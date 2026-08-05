@@ -3,10 +3,12 @@
 // Structure mirrors PM International's real workflow (RFQ -> line items -> quote -> quote line items)
 // but every table is filled with fictional data only. No real accounts, contacts, or pricing.
 
-// Bump this whenever SCHEMA changes shape. seed.js compares it against
+// Bump this whenever SCHEMA changes shape, OR when the fictional seed data
+// itself needs to be regenerated on an already-seeded disk (seed:if-empty
+// otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 5;
+const SCHEMA_VERSION = 6;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
