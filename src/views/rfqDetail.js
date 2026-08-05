@@ -6,18 +6,58 @@ const { escapeHtml } = require("./htmlHelpers");
 
 function lineItemRows(lineItems) {
   return lineItems
-    .map(
-      (li) => `
+    .map((li) => {
+      const notConverted = li.item_number_status === "Not Converted";
+      return `
     <tr>
+      <td>${escapeHtml(li.item_number || "—")}${notConverted ? " (Not Converted)" : ""}</td>
       <td>${escapeHtml(li.material_name)}</td>
       <td>${escapeHtml(li.product_form_name)}</td>
       <td>${escapeHtml(li.standard_code || "—")}</td>
       <td>${escapeHtml(li.description)}</td>
       <td>${escapeHtml(li.quantity)}</td>
       <td>${escapeHtml(li.unit)}</td>
-    </tr>`
-    )
+    </tr>`;
+    })
     .join("");
+}
+
+function supplierComparisonSection(rows) {
+  if (!rows.length) {
+    return "";
+  }
+
+  const tableRows = rows
+    .map((r) => {
+      if (!r.line_item_description) {
+        // Supplier was contacted but never sent pricing back (Declined/Expired).
+        return `
+    <tr>
+      <td>${escapeHtml(r.supplier_name)} (${escapeHtml(r.supplier_country)})</td>
+      <td colspan="6">${escapeHtml(r.outreach_status)} — no quote received</td>
+    </tr>`;
+      }
+      return `
+    <tr>
+      <td>${escapeHtml(r.supplier_name)} (${escapeHtml(r.supplier_country)})</td>
+      <td>${escapeHtml(r.line_item_description)}</td>
+      <td>${escapeHtml(r.unit_price)} ${escapeHtml(r.currency)}</td>
+      <td>${escapeHtml(r.lead_time_days)}</td>
+      <td>${escapeHtml(r.availability)}</td>
+      <td>${escapeHtml(r.weight_kg)} kg / ${escapeHtml(r.dimensions)}</td>
+      <td>${escapeHtml(r.crating_cost)} ${escapeHtml(r.currency)}</td>
+    </tr>`;
+    })
+    .join("");
+
+  return `
+    <h2>Supplier Comparison</h2>
+    <table>
+      <thead>
+        <tr><th>Vendor</th><th>Line Item</th><th>Unit Price</th><th>Lead Time (days)</th><th>Availability</th><th>Weight / Dimensions</th><th>Crating Cost</th></tr>
+      </thead>
+      <tbody>${tableRows}</tbody>
+    </table>`;
 }
 
 function quoteSection(quote, quoteLineItems) {
@@ -50,10 +90,11 @@ function quoteSection(quote, quoteLineItems) {
     </table>`;
 }
 
-function rfqDetailPage({ rfq, lineItems, quote, quoteLineItems }) {
+function rfqDetailPage({ rfq, lineItems, quote, quoteLineItems, supplierComparison = [] }) {
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
     <h1>${escapeHtml(rfq.rfq_number)} — ${escapeHtml(rfq.project_name)}</h1>
+    <p style="font-size: 1.2em"><strong>Pipeline Stage: ${escapeHtml(rfq.pipeline_stage)}</strong></p>
     <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(rfq.created_date)} &middot; Due: ${escapeHtml(rfq.due_date)}</p>
 
     <h2>Account</h2>
@@ -71,12 +112,14 @@ function rfqDetailPage({ rfq, lineItems, quote, quoteLineItems }) {
     <h2>Line Items</h2>
     <table>
       <thead>
-        <tr><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th><th>Qty</th><th>Unit</th></tr>
+        <tr><th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th><th>Qty</th><th>Unit</th></tr>
       </thead>
       <tbody>${lineItemRows(lineItems)}</tbody>
     </table>
 
     ${quoteSection(quote, quoteLineItems)}
+
+    ${supplierComparisonSection(supplierComparison)}
   `;
 
   return layout({ title: rfq.rfq_number, bodyHtml: body });

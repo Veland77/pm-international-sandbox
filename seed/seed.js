@@ -3,20 +3,42 @@
 // Run with: npm run seed           (always reseeds)
 //           npm run seed:if-empty  (only seeds if the database has no tables yet)
 
-const path = require("node:path");
-const { getDb, DB_PATH } = require("../src/db/connection");
-const { SCHEMA } = require("../src/db/schema");
+const { getDb } = require("../src/db/connection");
+const { SCHEMA, SCHEMA_VERSION } = require("../src/db/schema");
+const { formCodeForLineItem, materialCodeForName, buildItemNumber, markAsNotConverted } = require("../src/db/itemNumbers");
+const { SUPPLIERS, SUPPLIER_SCENARIOS_BY_RFQ_INDEX } = require("./supplierFixtures");
+const { seedSuppliersForRfq } = require("./seedSuppliers");
 
 const db = getDb();
 const seedOnlyIfEmpty = process.argv.includes("--if-empty");
 
-const tableCount = db
-  .prepare("SELECT count(*) as n FROM sqlite_master WHERE type='table'")
-  .get().n;
+function currentSchemaVersion() {
+  const schemaMetaExists = db
+    .prepare("SELECT count(*) as n FROM sqlite_master WHERE type='table' AND name='schema_meta'")
+    .get().n > 0;
+  if (!schemaMetaExists) return 0;
+  const row = db.prepare("SELECT version FROM schema_meta LIMIT 1").get();
+  return row ? row.version : 0;
+}
 
-if (seedOnlyIfEmpty && tableCount > 0) {
-  console.log("Database already has tables, skipping seed.");
+const existingVersion = currentSchemaVersion();
+const needsReseed = existingVersion < SCHEMA_VERSION;
+
+if (seedOnlyIfEmpty && !needsReseed) {
+  console.log(`Database already at schema version ${existingVersion}, skipping seed.`);
   process.exit(0);
+}
+
+const anyTablesExist = db.prepare("SELECT count(*) as n FROM sqlite_master WHERE type='table'").get().n > 0;
+
+if (anyTablesExist && needsReseed) {
+  // Schema shape changed since this disk was last seeded. CREATE TABLE IF NOT
+  // EXISTS won't add new columns to tables that already exist, so drop
+  // everything and rebuild fresh — safe here since this is disposable
+  // fictional demo data, never production data.
+  console.log(`Schema changed (v${existingVersion} -> v${SCHEMA_VERSION}), dropping all tables before reseeding.`);
+  const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+  tables.forEach((t) => db.exec(`DROP TABLE IF EXISTS "${t.name}";`));
 }
 
 db.exec(SCHEMA);
@@ -92,6 +114,15 @@ const catalogLines = [
 
 const rfqStatuses = ["New", "Quoting", "Quoted", "Won", "Lost"];
 
+// How the legacy status field maps onto the new, more granular pipeline_stage.
+const PIPELINE_STAGE_BY_STATUS = {
+  New: "New",
+  Quoting: "Sourcing",
+  Quoted: "Quoted to Customer",
+  Won: "Closed",
+  Lost: "Lost",
+};
+
 function daysFromNow(days) {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -109,8 +140,8 @@ const insertMaterial = db.prepare("INSERT INTO materials (name) VALUES (?)");
 const insertProductForm = db.prepare("INSERT INTO product_forms (name) VALUES (?)");
 const insertStandard = db.prepare("INSERT INTO standards (code, description) VALUES (?, ?)");
 const insertRfq = db.prepare(`
-  INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, created_date, due_date)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const insertRfqLine = db.prepare(`
   INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, standard_id, description, quantity, unit)
@@ -128,9 +159,24 @@ const insertActivity = db.prepare(`
   INSERT INTO activities (rfq_id, account_id, user_id, activity_type, note, created_date)
   VALUES (?, ?, ?, ?, ?, ?)
 `);
+const insertSupplier = db.prepare(
+  "INSERT INTO suppliers (name, country, region, specialty) VALUES (?, ?, ?, ?)"
+);
+const insertItemNumber = db.prepare(`
+  INSERT INTO item_numbers (item_number, rfq_line_item_id, form_id, material_id, spec_summary, status, created_date)
+  VALUES (?, ?, ?, ?, ?, ?, ?)
+`);
+const markItemNumberNotConverted = db.prepare(
+  "UPDATE item_numbers SET item_number = ?, status = 'Not Converted' WHERE id = ?"
+);
+const setSchemaVersion = db.prepare("INSERT INTO schema_meta (version) VALUES (?)");
 
 const seedTransaction = db.transaction(() => {
   db.exec(`
+    DELETE FROM customer_quote_options; DELETE FROM supplier_quote_line_items;
+    DELETE FROM supplier_quotes; DELETE FROM supplier_rfq_line_items;
+    DELETE FROM supplier_rfqs; DELETE FROM suppliers; DELETE FROM item_numbers;
+    DELETE FROM schema_meta;
     DELETE FROM activities; DELETE FROM quote_line_items; DELETE FROM quotes;
     DELETE FROM rfq_line_items; DELETE FROM rfqs; DELETE FROM contacts;
     DELETE FROM accounts; DELETE FROM users;
@@ -164,13 +210,20 @@ const seedTransaction = db.transaction(() => {
     standardIdByCode[s.code] = insertStandard.run(s.code, s.description).lastInsertRowid;
   });
 
+  const supplierIds = SUPPLIERS.map(
+    (s) => insertSupplier.run(s.name, s.country, s.region, s.specialty).lastInsertRowid
+  );
+
   let rfqCounter = 1001;
   let quoteCounter = 5001;
+  let itemNumberSequence = 1;
+  const itemNumberYear = new Date().getFullYear();
 
   accountIds.forEach((accountId, i) => {
     const contactId = contactIdsByAccount[i][0];
     const salesRepId = userIds[i % userIds.length];
     const status = rfqStatuses[i % rfqStatuses.length];
+    const pipelineStage = PIPELINE_STAGE_BY_STATUS[status];
 
     const rfqNumber = `RFQ-${rfqCounter++}`;
     const rfqId = insertRfq.run(
@@ -180,25 +233,48 @@ const seedTransaction = db.transaction(() => {
       salesRepId,
       `${fakeAccounts[i].name.split(" ")[0]} Pipework Package`,
       status,
+      pipelineStage,
       daysFromNow(-14 + i),
       daysFromNow(7 + i)
     ).lastInsertRowid;
 
-    // Give each RFQ 2-3 line items drawn from the material/product-form catalog.
+    // Give each RFQ 2-3 line items drawn from the material/product-form catalog,
+    // each assigned a traceability item number as it's worked into the RFQ.
     const lineCount = 2 + (i % 2);
     const rfqLineIds = [];
+    const lineItemsForSuppliers = [];
+    const itemNumbersForRfq = [];
     for (let j = 0; j < lineCount; j++) {
       const c = catalogLines[(i + j) % catalogLines.length];
+      const quantity = (j + 1) * 10;
       const lineId = insertRfqLine.run(
         rfqId,
         materialIdByName[c.material],
         productFormIdByName[c.form],
         standardIdByCode[c.standard],
         c.description,
-        (j + 1) * 10,
+        quantity,
         c.unit
       ).lastInsertRowid;
       rfqLineIds.push(lineId);
+      lineItemsForSuppliers.push({ id: lineId, quantity });
+
+      const itemNumber = buildItemNumber({
+        formCode: formCodeForLineItem(c.form, c.description),
+        materialCode: materialCodeForName(c.material),
+        year: itemNumberYear,
+        sequence: itemNumberSequence++,
+      });
+      const itemNumberId = insertItemNumber.run(
+        itemNumber,
+        lineId,
+        productFormIdByName[c.form],
+        materialIdByName[c.material],
+        c.description,
+        "Active",
+        daysFromNow(-14 + i)
+      ).lastInsertRowid;
+      itemNumbersForRfq.push({ id: itemNumberId, itemNumber });
     }
 
     insertActivity.run(
@@ -211,9 +287,10 @@ const seedTransaction = db.transaction(() => {
     );
 
     // Only quote RFQs that have moved past 'New'.
+    let quoteId = null;
     if (status !== "New") {
       const quoteNumber = `Q-${quoteCounter++}`;
-      const quoteId = insertQuote.run(
+      quoteId = insertQuote.run(
         quoteNumber,
         rfqId,
         1,
@@ -241,13 +318,27 @@ const seedTransaction = db.transaction(() => {
         daysFromNow(-7 + i)
       );
     }
+
+    // A lost RFQ's item numbers stay on record but are marked not converted.
+    if (status === "Lost") {
+      itemNumbersForRfq.forEach(({ id, itemNumber }) => {
+        markItemNumberNotConverted.run(markAsNotConverted(itemNumber), id);
+      });
+    }
+
+    const scenario = SUPPLIER_SCENARIOS_BY_RFQ_INDEX[i];
+    if (scenario) {
+      seedSuppliersForRfq(
+        db,
+        supplierIds,
+        { rfqId, lineItems: lineItemsForSuppliers, quoteId },
+        scenario
+      );
+    }
   });
+
+  setSchemaVersion.run(SCHEMA_VERSION);
 });
 
 seedTransaction();
 console.log("Seeded fictional CRM/RFQ test data.");
-
-// TEMPORARY diagnostic logging — remove once the table-not-found issue is resolved.
-console.log("DEBUG seed.js DB_PATH:", path.resolve(DB_PATH));
-const seededTables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-console.log("DEBUG seed.js tables:", seededTables.map((t) => t.name));

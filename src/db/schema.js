@@ -3,6 +3,11 @@
 // Structure mirrors PM International's real workflow (RFQ -> line items -> quote -> quote line items)
 // but every table is filled with fictional data only. No real accounts, contacts, or pricing.
 
+// Bump this whenever SCHEMA changes shape. seed.js compares it against
+// schema_meta on the live disk and does a full wipe + reseed when they
+// differ, since this is disposable fictional demo data, not production data.
+const SCHEMA_VERSION = 4;
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY,
@@ -36,6 +41,8 @@ CREATE TABLE IF NOT EXISTS rfqs (
   sales_rep_id INTEGER NOT NULL REFERENCES users(id),
   project_name TEXT NOT NULL,
   status TEXT NOT NULL,          -- 'New', 'Quoting', 'Quoted', 'Won', 'Lost'
+  pipeline_stage TEXT NOT NULL DEFAULT 'New', -- 'New', 'Sourcing', 'Comparing Offers', 'Quoted to Customer',
+                                               -- 'PO Received', 'In Production', 'Shipped', 'Delivered', 'Closed', 'Lost'
   created_date TEXT NOT NULL,
   due_date TEXT NOT NULL
 );
@@ -99,6 +106,78 @@ CREATE TABLE IF NOT EXISTS activities (
   note TEXT NOT NULL,
   created_date TEXT NOT NULL
 );
+
+-- Sourcing lifecycle: vendors an RFQ's line items were sent to, their
+-- quotes, and the traceability numbers assigned to each line item.
+-- See docs/phase4-sourcing-lifecycle.md for the full design.
+
+CREATE TABLE IF NOT EXISTS suppliers (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  country TEXT NOT NULL,
+  region TEXT NOT NULL,
+  specialty TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS supplier_rfqs (
+  id INTEGER PRIMARY KEY,
+  rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+  sent_date TEXT NOT NULL,
+  status TEXT NOT NULL             -- 'Sent', 'Quoted', 'Declined', 'Expired'
+);
+
+CREATE TABLE IF NOT EXISTS supplier_rfq_line_items (
+  id INTEGER PRIMARY KEY,
+  supplier_rfq_id INTEGER NOT NULL REFERENCES supplier_rfqs(id),
+  rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
+  quantity_requested INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS supplier_quotes (
+  id INTEGER PRIMARY KEY,
+  supplier_rfq_id INTEGER NOT NULL REFERENCES supplier_rfqs(id),
+  quote_ref TEXT NOT NULL,
+  received_date TEXT NOT NULL,
+  availability TEXT NOT NULL,      -- 'In Stock', 'Make to Order'
+  lead_time_days INTEGER NOT NULL,
+  valid_until TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS supplier_quote_line_items (
+  id INTEGER PRIMARY KEY,
+  supplier_quote_id INTEGER NOT NULL REFERENCES supplier_quotes(id),
+  rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
+  unit_price REAL NOT NULL,
+  currency TEXT NOT NULL,          -- e.g. 'USD', 'CNY' — no conversion logic
+  weight_kg REAL NOT NULL,
+  dimensions TEXT NOT NULL,
+  crating_cost REAL NOT NULL,
+  lead_time_days INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS customer_quote_options (
+  id INTEGER PRIMARY KEY,
+  quote_id INTEGER NOT NULL REFERENCES quotes(id),
+  option_label TEXT NOT NULL,      -- e.g. 'Option A'
+  supplier_quote_id INTEGER NOT NULL REFERENCES supplier_quotes(id),
+  notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS item_numbers (
+  id INTEGER PRIMARY KEY,
+  item_number TEXT NOT NULL UNIQUE,  -- {FORM}-{MATERIAL}-{YY}-{SEQUENCE}, e.g. SP-DX22-26-00042
+  rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
+  form_id INTEGER NOT NULL REFERENCES product_forms(id),
+  material_id INTEGER NOT NULL REFERENCES materials(id),
+  spec_summary TEXT NOT NULL,
+  status TEXT NOT NULL,             -- 'Active', 'Not Converted', 'Superseded'
+  created_date TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS schema_meta (
+  version INTEGER NOT NULL
+);
 `;
 
-module.exports = { SCHEMA };
+module.exports = { SCHEMA, SCHEMA_VERSION };
