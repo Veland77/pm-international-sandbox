@@ -5,16 +5,23 @@ const express = require("express");
 const path = require("path");
 const { getDb } = require("./db/connection");
 const { layout } = require("./views/layout");
+const { requireAuth } = require("./middleware/basicAuth");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true })); // parses the New RFQ form, including repeatable line_items[n][...] fields
-app.use(express.static(path.join(__dirname, "public")));
 
-// Render (and any monitor) can hit this to confirm the app is alive.
+// Render's health check must reach this without credentials — defined
+// before the auth gate below, so it's the one route that stays open.
 app.get("/healthz", (req, res) => res.json({ status: "ok" }));
+
+// Everything registered from here down requires HTTP Basic Auth
+// (SANDBOX_USER / SANDBOX_PASSWORD) — including static assets.
+app.use(requireAuth);
+
+app.use(express.static(path.join(__dirname, "public")));
 
 // Feature routes are added one file at a time under src/routes/.
 // rfqIntake must be mounted before rfqs: both live at /rfqs, and rfqs.js's
@@ -38,5 +45,8 @@ app.get("/", (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Sandbox running on port ${PORT}`);
+  if (!process.env.SANDBOX_USER || !process.env.SANDBOX_PASSWORD) {
+    console.warn("SANDBOX_USER / SANDBOX_PASSWORD not set — every request will be denied.");
+  }
   getDb(); // fail fast if the database can't be opened
 });

@@ -18,5 +18,12 @@ services:
         value: /data/sandbox.db
       - key: ATTACHMENTS_DIR
         value: /data/attachments
+      # Site-wide login (HTTP Basic Auth) — set these in the Render
+      # dashboard's Environment tab, never here. sync: false means Render
+      # expects a value but won't store or manage it from this file.
+      - key: SANDBOX_USER
+        sync: false
+      - key: SANDBOX_PASSWORD
+        sync: false
     domains:
       - sandbox.litleholm.no
