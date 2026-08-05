@@ -53,6 +53,7 @@ const TABLE_DROP_ORDER = [
   "materials",
   "product_forms",
   "standards",
+  "currency_rates",
   "schema_meta",
 ];
 
@@ -136,6 +137,15 @@ const catalogLines = [
   { material: "Copper Nickel", form: "Tubing", standard: "EN 10204 3.1", description: '2" Copper Nickel 90/10 Tubing', unit: "FT", length_m: 5.8 },
 ];
 
+// Approximate real-world market rates (public reference data), not a live
+// feed. "1 unit of this currency equals this many USD."
+const fakeCurrencyRates = [
+  { currency_code: "USD", rate_to_usd: 1.0, as_of_date: "2026-01-01" },
+  { currency_code: "EUR", rate_to_usd: 1.08, as_of_date: "2026-01-01" },
+  { currency_code: "CNY", rate_to_usd: 0.139, as_of_date: "2026-01-01" },
+  { currency_code: "KRW", rate_to_usd: 0.000725, as_of_date: "2026-01-01" },
+];
+
 const rfqStatuses = ["New", "Quoting", "Quoted", "Won", "Lost"];
 
 // How the legacy status field maps onto the new, more granular pipeline_stage.
@@ -188,6 +198,9 @@ const insertActivity = db.prepare(`
 const insertSupplier = db.prepare(
   "INSERT INTO suppliers (name, country, region, specialty) VALUES (?, ?, ?, ?)"
 );
+const insertCurrencyRate = db.prepare(
+  "INSERT INTO currency_rates (currency_code, rate_to_usd, as_of_date) VALUES (?, ?, ?)"
+);
 const insertItemNumber = db.prepare(`
   INSERT INTO item_numbers (item_number, rfq_line_item_id, form_id, material_id, spec_summary, status, created_date)
   VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -203,6 +216,7 @@ const seedTransaction = db.transaction(() => {
     DELETE FROM supplier_quote_line_items;
     DELETE FROM supplier_quotes; DELETE FROM supplier_rfq_line_items;
     DELETE FROM supplier_rfqs; DELETE FROM suppliers; DELETE FROM item_numbers;
+    DELETE FROM currency_rates;
     DELETE FROM schema_meta;
     DELETE FROM activities; DELETE FROM quote_line_items; DELETE FROM quotes;
     DELETE FROM rfq_line_items; DELETE FROM rfqs; DELETE FROM contacts;
@@ -240,6 +254,10 @@ const seedTransaction = db.transaction(() => {
   const supplierIds = SUPPLIERS.map(
     (s) => insertSupplier.run(s.name, s.country, s.region, s.specialty).lastInsertRowid
   );
+
+  fakeCurrencyRates.forEach((r) => {
+    insertCurrencyRate.run(r.currency_code, r.rate_to_usd, r.as_of_date);
+  });
 
   let rfqCounter = 1001;
   let quoteCounter = 5001;
@@ -286,9 +304,8 @@ const seedTransaction = db.transaction(() => {
         c.length_m
       ).lastInsertRowid;
       rfqLineIds.push(lineId);
-      // Matches the unit price used below when a quote is issued for this
-      // RFQ, so seeded vendor costs can be derived as a fraction of the
-      // real customer price instead of drifting from it independently.
+      // Kept alongside the line item so insertQuoteLine below reads the
+      // same value it inserts, rather than recomputing the formula twice.
       const customerUnitPriceUsd = 100 + j * 37.5;
       lineItemsForSuppliers.push({ id: lineId, quantity, unitPriceUsd: customerUnitPriceUsd });
 
@@ -362,10 +379,20 @@ const seedTransaction = db.transaction(() => {
 
     const scenario = SUPPLIER_SCENARIOS_BY_RFQ_INDEX[i];
     if (scenario) {
+      // Relative to this RFQ's own timeline (daysFromNow(-14 + i) creation),
+      // not fixed calendar strings — fixed dates drift into the RFQ's past
+      // as real time moves on, producing an arrival date before the RFQ
+      // even existed.
+      const dates = {
+        sentDate: daysFromNow(-10 + i),
+        receivedDate: daysFromNow(-3 + i),
+        validUntil: daysFromNow(60 + i),
+        selectedDate: daysFromNow(2 + i),
+      };
       seedSuppliersForRfq(
         db,
         supplierIds,
-        { rfqId, lineItems: lineItemsForSuppliers, quoteId },
+        { rfqId, lineItems: lineItemsForSuppliers, quoteId, dates },
         scenario,
         LINE_ITEM_SOURCING_BY_RFQ_INDEX[i]
       );

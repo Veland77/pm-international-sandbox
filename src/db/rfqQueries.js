@@ -77,6 +77,10 @@ const QUOTE_LINE_ITEMS_QUERY = `
   WHERE qli.quote_id = ?
 `;
 
+const CURRENCY_RATES_QUERY = `
+  SELECT currency_code, rate_to_usd, as_of_date FROM currency_rates
+`;
+
 function listRfqs(db) {
   return db.prepare(LIST_QUERY).all();
 }
@@ -105,6 +109,10 @@ function getLineItemSourcing(db, rfqId) {
   return db.prepare(LINE_ITEM_SOURCING_QUERY).all(rfqId);
 }
 
+function getCurrencyRates(db) {
+  return db.prepare(CURRENCY_RATES_QUERY).all();
+}
+
 module.exports = {
   listRfqs,
   getRfqById,
@@ -113,4 +121,5 @@ module.exports = {
   getQuoteLineItems,
   getSupplierComparison,
   getLineItemSourcing,
+  getCurrencyRates,
 };

@@ -33,25 +33,23 @@ const SUPPLIERS = [
 // suppliers were sent the RFQ and how they responded, so a handful of RFQs
 // show a meaningful multi-vendor comparison (differing price, lead time,
 // availability), not just a single quote.
-// priceMultiplier is this vendor's cost as a fraction of the customer's USD
-// sell price for the same line (kept under 1 so gross profit is always
-// positive in the seeded demo, while still varying by vendor so the
-// comparison table shows a real cheaper-but-slower vs. pricier-but-faster
-// tradeoff).
+// priceMultiplier is independent, vendor-side price variation (NOT derived
+// from the customer's sell price) — some lines will show thin or negative
+// margin once converted to USD, and that's real signal, not a bug.
 const SUPPLIER_SCENARIOS_BY_RFQ_INDEX = {
   1: [
-    { supplierIndex: 0, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 35, priceMultiplier: 0.55, currency: "CNY", estimatedTransitDays: 30 },
-    { supplierIndex: 3, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 12, priceMultiplier: 0.75, currency: "EUR", estimatedTransitDays: 7 },
+    { supplierIndex: 0, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 35, priceMultiplier: 0.82, currency: "CNY", estimatedTransitDays: 30 },
+    { supplierIndex: 3, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 12, priceMultiplier: 1.15, currency: "EUR", estimatedTransitDays: 7 },
     { supplierIndex: 2, outreachStatus: "Declined" },
   ],
   2: [
-    { supplierIndex: 1, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 18, priceMultiplier: 0.72, currency: "EUR", estimatedTransitDays: 7 },
-    { supplierIndex: 0, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 40, priceMultiplier: 0.58, currency: "CNY", estimatedTransitDays: 30 },
+    { supplierIndex: 1, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 18, priceMultiplier: 1.05, currency: "EUR", estimatedTransitDays: 7 },
+    { supplierIndex: 0, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 40, priceMultiplier: 0.78, currency: "CNY", estimatedTransitDays: 30 },
     { supplierIndex: 2, outreachStatus: "Expired" },
   ],
   3: [
-    { supplierIndex: 3, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 15, priceMultiplier: 0.78, currency: "EUR", estimatedTransitDays: 7 },
-    { supplierIndex: 1, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 28, priceMultiplier: 0.68, currency: "EUR", estimatedTransitDays: 7 },
+    { supplierIndex: 3, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 15, priceMultiplier: 1.1, currency: "EUR", estimatedTransitDays: 7 },
+    { supplierIndex: 1, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 28, priceMultiplier: 0.95, currency: "EUR", estimatedTransitDays: 7 },
     { supplierIndex: 0, outreachStatus: "Declined" },
   ],
 };

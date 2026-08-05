@@ -23,7 +23,7 @@ function orderSummaryBlock(rfq, quote, orderSummary) {
     </div>`;
 }
 
-function lineItemRows(lineItems, sourcingRows) {
+function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
   const vendorByLineItemId = new Map(sourcingRows.map((r) => [r.rfq_line_item_id, r.supplier_name]));
 
   return lineItems
@@ -32,6 +32,12 @@ function lineItemRows(lineItems, sourcingRows) {
       const oversized = li.length_m != null && li.length_m > 6;
       const lengthText = li.length_m == null ? "—" : `${li.length_m} m`;
       const vendor = vendorByLineItemId.get(li.id) || "—";
+      const margin = lineItemMargins.get(li.id);
+      const buyPriceText = margin ? `$${margin.buyUnitPriceUsd.toFixed(2)}` : "—";
+      const sellPriceText = margin ? `$${margin.sellUnitPriceUsd.toFixed(2)}` : "—";
+      const marginText = margin
+        ? `$${margin.marginUnitUsd.toFixed(2)} (${margin.marginPct === null ? "—" : `${margin.marginPct.toFixed(1)}%`})`
+        : "—";
       return `
     <tr>
       <td>${escapeHtml(li.item_number || "—")}${notConverted ? " (Not Converted)" : ""}</td>
@@ -43,6 +49,9 @@ function lineItemRows(lineItems, sourcingRows) {
       <td>${escapeHtml(li.unit)}</td>
       <td>${escapeHtml(lengthText)}${oversized ? " ⚠ Oversized — air freight constrained" : ""}</td>
       <td>${escapeHtml(vendor)}</td>
+      <td>${escapeHtml(buyPriceText)}</td>
+      <td>${escapeHtml(sellPriceText)}</td>
+      <td>${escapeHtml(marginText)}</td>
     </tr>`;
     })
     .join("");
@@ -124,6 +133,7 @@ function rfqDetailPage({
   supplierComparison = [],
   sourcingRows = [],
   orderSummary,
+  lineItemMargins = new Map(),
 }) {
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
@@ -152,9 +162,10 @@ function rfqDetailPage({
         <tr>
           <th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th>
           <th>Qty</th><th>Unit</th><th>Length</th><th>Vendor</th>
+          <th>Buy Price</th><th>Sell Price</th><th>Gross Margin</th>
         </tr>
       </thead>
-      <tbody>${lineItemRows(lineItems, sourcingRows)}</tbody>
+      <tbody>${lineItemRows(lineItems, sourcingRows, lineItemMargins)}</tbody>
     </table>
 
     ${quoteSection(quote, quoteLineItems)}

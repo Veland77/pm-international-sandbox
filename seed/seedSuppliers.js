@@ -3,11 +3,9 @@
 // items) for one RFQ's scenario from supplierFixtures.js, and links each
 // vendor quote that was actually received to a customer quote option.
 
-const { FIXED_DEMO_USD_RATES } = require("../src/db/orderSummary");
-
 const OPTION_LABELS = ["Option A", "Option B", "Option C"];
 
-function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, scenario, sourcingSpec) {
+function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates }, scenario, sourcingSpec) {
   const insertSupplierRfq = db.prepare(
     "INSERT INTO supplier_rfqs (rfq_id, supplier_id, sent_date, status) VALUES (?, ?, ?, ?)"
   );
@@ -42,7 +40,7 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
     const supplierRfqId = insertSupplierRfq.run(
       rfqId,
       supplierIds[entry.supplierIndex],
-      "2026-01-10",
+      dates.sentDate,
       entry.outreachStatus
     ).lastInsertRowid;
 
@@ -57,24 +55,23 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
     const supplierQuoteId = insertSupplierQuote.run(
       supplierRfqId,
       `SQ-${supplierRfqId}-${entry.currency}`,
-      "2026-01-20",
+      dates.receivedDate,
       entry.availability,
       entry.leadTimeDays,
-      "2026-04-01",
+      dates.validUntil,
       entry.estimatedTransitDays
     ).lastInsertRowid;
 
     lineItems.forEach((li, j) => {
-      // entry.priceMultiplier is this vendor's cost as a fraction of the
-      // customer's USD sell price for this same line (kept under 1 so the
-      // seeded data always shows a positive gross margin), converted into
-      // the vendor's own currency for storage/display.
-      const targetCostUsd = li.unitPriceUsd * entry.priceMultiplier;
-      const localUnitPrice = targetCostUsd / FIXED_DEMO_USD_RATES[entry.currency];
+      // Independent, vendor-side fictional pricing in the vendor's own
+      // currency — deliberately NOT derived from the customer's sell price,
+      // so real margin (including thin or occasionally negative) shows
+      // through once converted to USD.
+      const basePrice = 150 + j * 45;
       const supplierQuoteLineItemId = insertSupplierQuoteLine.run(
         supplierQuoteId,
         li.id,
-        Math.round(localUnitPrice * 100) / 100,
+        Math.round(basePrice * entry.priceMultiplier * 100) / 100,
         entry.currency,
         20 + j * 5,
         "120 x 15 x 15 cm",
@@ -100,7 +97,7 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId }, sce
       const supplierIndex = sourcingSpec[j];
       const supplierQuoteLineItemId = quoteLineItemIdByKey.get(`${supplierIndex}:${li.id}`);
       if (supplierQuoteLineItemId) {
-        insertLineItemSourcing.run(li.id, supplierQuoteLineItemId, "2026-02-01");
+        insertLineItemSourcing.run(li.id, supplierQuoteLineItemId, dates.selectedDate);
       }
     });
   }

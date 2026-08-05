@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 6;
+const SCHEMA_VERSION = 7;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -190,6 +190,15 @@ CREATE TABLE IF NOT EXISTS item_numbers (
   spec_summary TEXT NOT NULL,
   status TEXT NOT NULL,             -- 'Active', 'Not Converted', 'Superseded'
   created_date TEXT NOT NULL
+);
+
+-- Real conversion rates for turning a vendor's foreign-currency cost into
+-- USD for margin reporting. rate_to_usd is "1 unit of currency_code equals
+-- this many USD". Approximate public market data, not a live feed.
+CREATE TABLE IF NOT EXISTS currency_rates (
+  currency_code TEXT PRIMARY KEY,
+  rate_to_usd REAL NOT NULL,
+  as_of_date TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schema_meta (

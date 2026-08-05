@@ -11,8 +11,9 @@ const {
   getQuoteLineItems,
   getSupplierComparison,
   getLineItemSourcing,
+  getCurrencyRates,
 } = require("../db/rfqQueries");
-const { buildOrderSummary } = require("../db/orderSummary");
+const { buildOrderSummary, buildLineItemMargins } = require("../db/orderSummary");
 const { rfqListPage } = require("../views/rfqList");
 const { rfqDetailPage } = require("../views/rfqDetail");
 
@@ -36,7 +37,9 @@ router.get("/:id", (req, res) => {
   const quoteLineItems = quote ? getQuoteLineItems(db, quote.id) : [];
   const supplierComparison = getSupplierComparison(db, rfq.id);
   const sourcingRows = getLineItemSourcing(db, rfq.id);
-  const orderSummary = buildOrderSummary({ quoteLineItems, sourcingRows });
+  const rates = getCurrencyRates(db);
+  const orderSummary = buildOrderSummary({ quoteLineItems, sourcingRows, rates });
+  const lineItemMargins = buildLineItemMargins({ quoteLineItems, sourcingRows, rates });
 
   res.send(
     rfqDetailPage({
@@ -47,6 +50,7 @@ router.get("/:id", (req, res) => {
       supplierComparison,
       sourcingRows,
       orderSummary,
+      lineItemMargins,
     })
   );
 });
