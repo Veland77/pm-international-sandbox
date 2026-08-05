@@ -22,6 +22,7 @@ function rfqListPage(rfqs) {
   const body = `
     <a class="back-link" href="/">&larr; Home</a>
     <h1>RFQs</h1>
+    <p><a href="/rfqs/new">+ New RFQ</a></p>
     <table>
       <thead>
         <tr><th>RFQ #</th><th>Account</th><th>Project</th><th>Status</th><th>Sales Rep</th><th>Due Date</th></tr>

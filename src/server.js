@@ -10,12 +10,16 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // parses the New RFQ form, including repeatable line_items[n][...] fields
 app.use(express.static(path.join(__dirname, "public")));
 
 // Render (and any monitor) can hit this to confirm the app is alive.
 app.get("/healthz", (req, res) => res.json({ status: "ok" }));
 
 // Feature routes are added one file at a time under src/routes/.
+// rfqIntake must be mounted before rfqs: both live at /rfqs, and rfqs.js's
+// GET /:id would otherwise swallow GET /rfqs/new (treating "new" as an id).
+app.use("/rfqs", require("./routes/rfqIntake"));
 app.use("/rfqs", require("./routes/rfqs"));
 
 app.get("/", (req, res) => {
