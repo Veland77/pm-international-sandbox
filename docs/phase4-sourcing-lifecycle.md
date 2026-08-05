@@ -73,3 +73,9 @@ The first pass got three things wrong, found through review rather than by const
   - `supplier_quotes.sent_date`/`received_date`/`valid_until` and `line_item_sourcing.selected_date` were hardcoded literal date strings — the only dates in `seed.js` not computed relative to "now" like everything else. As real time passes those fixed dates drift into each RFQ's past, eventually producing an estimated vendor arrival date before the RFQ was even created. Fixed by computing them with `daysFromNow()` relative to each RFQ's own timeline.
 
 **4. `quote_line_items.margin_pct` renamed to `target_margin_pct`** (kept, not removed) — it's the sales rep's target margin at quoting time, before a vendor is sourced. It's a genuinely different number from the computed **Gross Margin** (the actual outcome once a vendor is selected), so keeping both is useful; the rename plus the view's "Target Margin %" column header make sure they're never read as contradicting each other.
+
+## Future: margin override rule
+
+Documentation only — no code changes yet. This applies once quote creation/editing gets built, not to the RFQ intake form.
+
+Whenever a future step lets someone set or edit a customer-facing sell price, if the resulting margin would be negative (selling below the selected vendor's cost), the system must show a clear warning and require explicit manual confirmation before it can be saved. Not silently allowed, and not silently blocked either — negative margins are sometimes a real, deliberate business decision (loss-leader, relationship deal), but they should never happen by accident.
