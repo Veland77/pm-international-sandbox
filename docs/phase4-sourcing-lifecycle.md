@@ -134,6 +134,14 @@ The RFQ detail page gets a new "Supplier Inquiries" section (vendor, inquiry #, 
 
 No schema changes were needed — this reads/writes existing tables — so it shipped without a reseed.
 
+## Site-wide login gate
+
+Not sourcing-specific, but the whole app sits behind it now, so recording it here: `GET`/every other route requires HTTP Basic Auth (`src/middleware/basicAuth.js`, mounted in `server.js`). Credentials come from `SANDBOX_USER` / `SANDBOX_PASSWORD` environment variables only — never hardcoded, and never committed. `render.yaml` declares both with `sync: false` (Render expects the keys but won't store values in git); they're set in the Render dashboard's Environment tab. See `README.md` for the short version.
+
+`GET /healthz` is the one route defined *before* the auth middleware, so it stays open for Render's own health check. Everything registered after the gate — including static assets like `rfqIntake.js` — requires credentials, confirmed live (`401` on `/`, `/rfqs`, and `/rfqIntake.js`; `200` on `/healthz`, no credentials in any case).
+
+Fails closed: if either env var is unset, every request is denied rather than allowed through — the safer default for a misconfiguration, and what actually happened immediately after this shipped (credentials hadn't been set in Render yet). A startup `console.warn` flags that specific case in the logs. `tests/basicAuth.test.js` covers match/mismatch/missing-header/unset-env-vars against mock req/res objects — pure logic, no database, runs locally. No new dependency; Node's built-in `Buffer` covers the base64 decoding Basic Auth needs.
+
 ## Future: margin override rule
 
 Documentation only — no code changes yet. This applies once quote creation/editing gets built, not to the RFQ intake form.
