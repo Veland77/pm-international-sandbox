@@ -8,11 +8,11 @@ Add one field to the existing `rfqs` table: `pipeline_stage`, one of: New, Sourc
 
 **suppliers** — id, name, country, region, specialty (free text)
 
-**supplier_rfqs** — one row per vendor a given customer RFQ was sent to. id, rfq_id, supplier_id, sent_date, status (Sent, Quoted, Declined, Expired)
+**supplier_inquiries** — one row per vendor a given customer RFQ was sent to (a "Sourcing Inquiry" — see the rename note below). id, inquiry_number, rfq_id, supplier_id, sent_date, status (Sent, Quoted, Declined, Expired)
 
-**supplier_rfq_line_items** — which line items went to which vendor. id, supplier_rfq_id, rfq_line_item_id, quantity_requested
+**supplier_inquiry_line_items** — which line items went to which vendor. id, supplier_inquiry_id, rfq_line_item_id, quantity_requested
 
-**supplier_quotes** — a vendor's response. id, supplier_rfq_id, quote_ref, received_date, availability (In Stock, Make to Order), lead_time_days, valid_until
+**supplier_quotes** — a vendor's response. id, supplier_inquiry_id, quote_ref, received_date, availability (In Stock, Make to Order), lead_time_days, valid_until
 
 **supplier_quote_line_items** — the comparable numbers. id, supplier_quote_id, rfq_line_item_id, unit_price, currency (plain text, e.g. "USD" or "CNY" — no conversion logic needed), weight_kg, dimensions, crating_cost, lead_time_days
 
@@ -73,6 +73,16 @@ The first pass got three things wrong, found through review rather than by const
   - `supplier_quotes.sent_date`/`received_date`/`valid_until` and `line_item_sourcing.selected_date` were hardcoded literal date strings — the only dates in `seed.js` not computed relative to "now" like everything else. As real time passes those fixed dates drift into each RFQ's past, eventually producing an estimated vendor arrival date before the RFQ was even created. Fixed by computing them with `daysFromNow()` relative to each RFQ's own timeline.
 
 **4. `quote_line_items.margin_pct` renamed to `target_margin_pct`** (kept, not removed) — it's the sales rep's target margin at quoting time, before a vendor is sourced. It's a genuinely different number from the computed **Gross Margin** (the actual outcome once a vendor is selected), so keeping both is useful; the rename plus the view's "Target Margin %" column header make sure they're never read as contradicting each other.
+
+## Correction: "RFQ" renamed to "Sourcing Inquiry" on the supplier side
+
+"RFQ" was being used for two different things: what a customer sends PM, and what PM sends a vendor. That's a real source of confusion in operation, and was already getting confusing in the code. "RFQ" is now reserved exclusively for the customer-facing request — matching how PM's own site already uses the word. The supplier-facing side is now a **Sourcing Inquiry**:
+
+- `supplier_rfqs` → **`supplier_inquiries`**, with a new `inquiry_number` field (format `INQ-XXXX`, e.g. `INQ-9001`) generated the same way `rfq_number` is — a plain incrementing counter (`inquiryCounter` in `seed.js`, starting at 9001).
+- `supplier_rfq_line_items` → **`supplier_inquiry_line_items`**.
+- `supplier_quotes.supplier_rfq_id` → **`supplier_inquiry_id`**.
+- The `rfq_id` column on `supplier_inquiries` is unchanged — it's a genuine foreign key to the customer's `rfqs` table (which vendor inquiry, for which customer RFQ), so that usage of "rfq" was always correct.
+- The RFQ detail page's Supplier Comparison table now leads with an **Inquiry #** column, so it's clear which outbound inquiry a given vendor quote came from.
 
 ## Future: margin override rule
 

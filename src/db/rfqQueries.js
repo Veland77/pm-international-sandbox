@@ -44,24 +44,24 @@ const LINE_ITEM_SOURCING_QUERY = `
   JOIN rfq_line_items li ON li.id = lis.rfq_line_item_id
   JOIN supplier_quote_line_items sqli ON sqli.id = lis.supplier_quote_line_item_id
   JOIN supplier_quotes sq ON sq.id = sqli.supplier_quote_id
-  JOIN supplier_rfqs sr ON sr.id = sq.supplier_rfq_id
-  JOIN suppliers supplr ON supplr.id = sr.supplier_id
+  JOIN supplier_inquiries si ON si.id = sq.supplier_inquiry_id
+  JOIN suppliers supplr ON supplr.id = si.supplier_id
   WHERE li.rfq_id = ? AND lis.status = 'Selected'
 `;
 
 const SUPPLIER_COMPARISON_QUERY = `
-  SELECT sr.id AS supplier_rfq_id, s.name AS supplier_name, s.country AS supplier_country,
-         sr.status AS outreach_status,
+  SELECT si.id AS supplier_inquiry_id, si.inquiry_number, s.name AS supplier_name, s.country AS supplier_country,
+         si.status AS outreach_status,
          sq.quote_ref, sq.availability, sq.valid_until,
          li.description AS line_item_description,
          sqli.unit_price, sqli.currency, sqli.weight_kg, sqli.dimensions,
          sqli.crating_cost, sqli.lead_time_days
-  FROM supplier_rfqs sr
-  JOIN suppliers s ON s.id = sr.supplier_id
-  LEFT JOIN supplier_quotes sq ON sq.supplier_rfq_id = sr.id
+  FROM supplier_inquiries si
+  JOIN suppliers s ON s.id = si.supplier_id
+  LEFT JOIN supplier_quotes sq ON sq.supplier_inquiry_id = si.id
   LEFT JOIN supplier_quote_line_items sqli ON sqli.supplier_quote_id = sq.id
   LEFT JOIN rfq_line_items li ON li.id = sqli.rfq_line_item_id
-  WHERE sr.rfq_id = ?
+  WHERE si.rfq_id = ?
   ORDER BY s.name, sqli.rfq_line_item_id
 `;
 

@@ -39,12 +39,12 @@ const TABLE_DROP_ORDER = [
   "supplier_quote_line_items",
   "item_numbers",
   "quote_line_items",
-  "supplier_rfq_line_items",
+  "supplier_inquiry_line_items",
   "supplier_quotes",
   "activities",
   "quotes",
   "rfq_line_items",
-  "supplier_rfqs",
+  "supplier_inquiries",
   "rfqs",
   "contacts",
   "suppliers",
@@ -214,8 +214,8 @@ const seedTransaction = db.transaction(() => {
   db.exec(`
     DELETE FROM customer_quote_options; DELETE FROM line_item_sourcing;
     DELETE FROM supplier_quote_line_items;
-    DELETE FROM supplier_quotes; DELETE FROM supplier_rfq_line_items;
-    DELETE FROM supplier_rfqs; DELETE FROM suppliers; DELETE FROM item_numbers;
+    DELETE FROM supplier_quotes; DELETE FROM supplier_inquiry_line_items;
+    DELETE FROM supplier_inquiries; DELETE FROM suppliers; DELETE FROM item_numbers;
     DELETE FROM currency_rates;
     DELETE FROM schema_meta;
     DELETE FROM activities; DELETE FROM quote_line_items; DELETE FROM quotes;
@@ -261,8 +261,14 @@ const seedTransaction = db.transaction(() => {
 
   let rfqCounter = 1001;
   let quoteCounter = 5001;
+  let inquiryCounter = 9001;
   let itemNumberSequence = 1;
   const itemNumberYear = new Date().getFullYear();
+
+  // Generated the same way rfq_number is: a plain incrementing counter.
+  function nextInquiryNumber() {
+    return `INQ-${inquiryCounter++}`;
+  }
 
   accountIds.forEach((accountId, i) => {
     const contactId = contactIdsByAccount[i][0];
@@ -392,7 +398,7 @@ const seedTransaction = db.transaction(() => {
       seedSuppliersForRfq(
         db,
         supplierIds,
-        { rfqId, lineItems: lineItemsForSuppliers, quoteId, dates },
+        { rfqId, lineItems: lineItemsForSuppliers, quoteId, dates, nextInquiryNumber },
         scenario,
         LINE_ITEM_SOURCING_BY_RFQ_INDEX[i]
       );

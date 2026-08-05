@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 8;
+const SCHEMA_VERSION = 9;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -117,6 +117,11 @@ CREATE TABLE IF NOT EXISTS activities (
 -- Sourcing lifecycle: vendors an RFQ's line items were sent to, their
 -- quotes, and the traceability numbers assigned to each line item.
 -- See docs/phase4-sourcing-lifecycle.md for the full design.
+--
+-- "RFQ" is reserved exclusively for the customer-facing request (matches
+-- PM's own site usage). What PM sends to a vendor is a Sourcing Inquiry —
+-- a different thing, on the opposite side of the deal — hence
+-- supplier_inquiries below, not "supplier_rfqs".
 
 CREATE TABLE IF NOT EXISTS suppliers (
   id INTEGER PRIMARY KEY,
@@ -126,24 +131,27 @@ CREATE TABLE IF NOT EXISTS suppliers (
   specialty TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS supplier_rfqs (
+-- A sourcing inquiry: PM asking one vendor to quote some of a customer
+-- RFQ's line items.
+CREATE TABLE IF NOT EXISTS supplier_inquiries (
   id INTEGER PRIMARY KEY,
+  inquiry_number TEXT NOT NULL UNIQUE,  -- e.g. INQ-9001, same style/generation as rfq_number
   rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
   supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
   sent_date TEXT NOT NULL,
   status TEXT NOT NULL             -- 'Sent', 'Quoted', 'Declined', 'Expired'
 );
 
-CREATE TABLE IF NOT EXISTS supplier_rfq_line_items (
+CREATE TABLE IF NOT EXISTS supplier_inquiry_line_items (
   id INTEGER PRIMARY KEY,
-  supplier_rfq_id INTEGER NOT NULL REFERENCES supplier_rfqs(id),
+  supplier_inquiry_id INTEGER NOT NULL REFERENCES supplier_inquiries(id),
   rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
   quantity_requested INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS supplier_quotes (
   id INTEGER PRIMARY KEY,
-  supplier_rfq_id INTEGER NOT NULL REFERENCES supplier_rfqs(id),
+  supplier_inquiry_id INTEGER NOT NULL REFERENCES supplier_inquiries(id),
   quote_ref TEXT NOT NULL,
   received_date TEXT NOT NULL,
   availability TEXT NOT NULL,      -- 'In Stock', 'Make to Order'

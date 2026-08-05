@@ -1,20 +1,21 @@
 // seed/seedSuppliers.js
-// Inserts the supplier-side sourcing data (outreach, quotes, comparison line
-// items) for one RFQ's scenario from supplierFixtures.js, and links each
-// vendor quote that was actually received to a customer quote option.
+// Inserts the supplier-side sourcing data (sourcing inquiries, quotes,
+// comparison line items) for one RFQ's scenario from supplierFixtures.js,
+// and links each vendor quote that was actually received to a customer
+// quote option.
 
 const OPTION_LABELS = ["Option A", "Option B", "Option C"];
 
-function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates }, scenario, sourcingSpec) {
-  const insertSupplierRfq = db.prepare(
-    "INSERT INTO supplier_rfqs (rfq_id, supplier_id, sent_date, status) VALUES (?, ?, ?, ?)"
+function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates, nextInquiryNumber }, scenario, sourcingSpec) {
+  const insertSupplierInquiry = db.prepare(
+    "INSERT INTO supplier_inquiries (inquiry_number, rfq_id, supplier_id, sent_date, status) VALUES (?, ?, ?, ?, ?)"
   );
-  const insertSupplierRfqLine = db.prepare(
-    "INSERT INTO supplier_rfq_line_items (supplier_rfq_id, rfq_line_item_id, quantity_requested) VALUES (?, ?, ?)"
+  const insertSupplierInquiryLine = db.prepare(
+    "INSERT INTO supplier_inquiry_line_items (supplier_inquiry_id, rfq_line_item_id, quantity_requested) VALUES (?, ?, ?)"
   );
   const insertSupplierQuote = db.prepare(`
     INSERT INTO supplier_quotes
-      (supplier_rfq_id, quote_ref, received_date, availability, lead_time_days, valid_until, estimated_transit_days)
+      (supplier_inquiry_id, quote_ref, received_date, availability, lead_time_days, valid_until, estimated_transit_days)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
   const insertSupplierQuoteLine = db.prepare(`
@@ -37,7 +38,8 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates
   const quoteLineItemIdByKey = new Map();
 
   scenario.forEach((entry) => {
-    const supplierRfqId = insertSupplierRfq.run(
+    const supplierInquiryId = insertSupplierInquiry.run(
+      nextInquiryNumber(),
       rfqId,
       supplierIds[entry.supplierIndex],
       dates.sentDate,
@@ -45,7 +47,7 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates
     ).lastInsertRowid;
 
     lineItems.forEach((li) => {
-      insertSupplierRfqLine.run(supplierRfqId, li.id, li.quantity);
+      insertSupplierInquiryLine.run(supplierInquiryId, li.id, li.quantity);
     });
 
     if (entry.outreachStatus !== "Quoted") {
@@ -53,8 +55,8 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates
     }
 
     const supplierQuoteId = insertSupplierQuote.run(
-      supplierRfqId,
-      `SQ-${supplierRfqId}-${entry.currency}`,
+      supplierInquiryId,
+      `SQ-${supplierInquiryId}-${entry.currency}`,
       dates.receivedDate,
       entry.availability,
       entry.leadTimeDays,
