@@ -84,6 +84,23 @@ The first pass got three things wrong, found through review rather than by const
 - The `rfq_id` column on `supplier_inquiries` is unchanged — it's a genuine foreign key to the customer's `rfqs` table (which vendor inquiry, for which customer RFQ), so that usage of "rfq" was always correct.
 - The RFQ detail page's Supplier Comparison table now leads with an **Inquiry #** column, so it's clear which outbound inquiry a given vendor quote came from.
 
+## Customer/supplier attachment confidentiality separation
+
+PM has exclusivity with some customers in certain markets, and suppliers must never see which end customer an inquiry is for, or they could approach them directly. This is a confidentiality control, not just a feature — so the two attachment systems are built as two entirely independent stacks, not a shared, parameterized one. A shared abstraction is itself a risk here: it's a code path a future edit could accidentally use to blur the line. No function or route in either system imports anything from the other.
+
+**New tables**
+
+- **rfq_attachments** — the customer's original files. id, rfq_id, original_filename, stored_filename, uploaded_date, mime_type. Never referenced from any supplier-facing route or view.
+- **supplier_inquiry_attachments** — files manually uploaded when preparing an outbound inquiry. id, supplier_inquiry_id, original_filename, stored_filename, uploaded_date, mime_type. Completely separate; never auto-copied or derived from `rfq_attachments`.
+
+**Storage**: uploaded files go on the persistent disk under `ATTACHMENTS_DIR` (`/data/attachments` in production, matching the `DATABASE_PATH` pattern), in two separate subfolders — `attachments/rfq/` and `attachments/supplier-inquiry/`. Stored filenames are randomized (extension preserved, original name discarded) so identity can't leak through the filename itself; the real filename is kept only in the database and restored on download via `Content-Disposition`.
+
+**Independent modules, one full set per side** (`src/storage/`, `src/db/`, `src/routes/`, `src/views/`) — `rfqAttachment*` for the customer side, `supplierInquiryAttachment*` for the supplier side. Upload uses `multer` (memory storage) for multipart parsing — the one new dependency here, since hand-rolling multipart parsing reliably isn't practical.
+
+**UI**: the RFQ detail page gets a "Customer Attachments" section labeled **"Internal only — do not share with suppliers"**, and a "Supplier-Facing Attachments" section — grouped per Sourcing Inquiry, since there's no dedicated inquiry page yet — labeled **"Confirmed clean of customer identity"**. Both have their own independent upload/list/download.
+
+**Verified**: uploaded a test file to a customer RFQ and confirmed it appeared only in Customer Attachments, nowhere in the Supplier Comparison table or Supplier-Facing Attachments for any of that RFQ's inquiries. Uploaded a separate test file as a supplier-inquiry attachment and confirmed the reverse. `tests/attachments.test.js` encodes this as a standing check: inserting into one attachment table never surfaces when querying the other.
+
 ## Future: margin override rule
 
 Documentation only — no code changes yet. This applies once quote creation/editing gets built, not to the RFQ intake form.
