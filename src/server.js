@@ -29,6 +29,7 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use("/rfqs", require("./routes/rfqIntake"));
 app.use("/rfqs", require("./routes/rfqAttachments")); // customer attachments only — see src/db/schema.js
 app.use("/rfqs", require("./routes/inquiryIntake"));
+app.use("/rfqs", require("./routes/freightIntake"));
 // orderIntake must be mounted before rfqs: both live at /rfqs, and rfqs.js's
 // GET /:id would otherwise swallow GET /rfqs/:id/convert-to-order.
 app.use("/rfqs", require("./routes/orderIntake"));
@@ -37,6 +38,7 @@ app.use("/orders", require("./routes/orders"));
 app.use("/supplier-inquiries", require("./routes/supplierInquiryAttachments")); // supplier-facing attachments only
 app.use("/supplier-inquiries", require("./routes/supplierInquiries"));
 app.use("/inquiries", require("./routes/inquiryPrint"));
+app.use("/freight-inquiries", require("./routes/freightPrint"));
 
 app.get("/", (req, res) => {
   res.send(

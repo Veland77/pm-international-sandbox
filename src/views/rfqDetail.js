@@ -136,6 +136,32 @@ function supplierInquiriesSection(rfqId, inquiries) {
     </div>`;
 }
 
+function freightInquiriesSection(rfqId, freightInquiries) {
+  const rows = freightInquiries
+    .map(
+      (fi) => `
+    <tr>
+      <td><a href="/freight-inquiries/${fi.id}/print">${escapeHtml(fi.frq_number)}</a></td>
+      <td>${escapeHtml(fi.freight_forwarder_name)}</td>
+      <td>${escapeHtml(fi.status)}</td>
+      <td>${escapeHtml(fi.line_item_descriptions || "—")}</td>
+    </tr>`
+    )
+    .join("");
+
+  return `
+    <div class="card">
+      <h2>Freight Inquiries</h2>
+      <p><a class="btn btn-secondary" href="/rfqs/${rfqId}/freight-inquiries/new">+ New Freight Inquiry</a></p>
+      <table>
+        <thead>
+          <tr><th>FRQ #</th><th>Forwarder</th><th>Status</th><th>Line Items</th></tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="4">No freight inquiries sent yet.</td></tr>'}</tbody>
+      </table>
+    </div>`;
+}
+
 function supplierComparisonSection(rows) {
   if (!rows.length) {
     return "";
@@ -222,6 +248,7 @@ function rfqDetailPage({
   rfqAttachments = [],
   supplierInquiries = [],
   supplierInquiryAttachmentsByInquiryId = new Map(),
+  freightInquiries = [],
   order = null,
   shipments = [],
 }) {
@@ -264,6 +291,8 @@ function rfqDetailPage({
     ${quoteSection(quote, quoteLineItems)}
 
     ${supplierInquiriesSection(rfq.id, supplierInquiries)}
+
+    ${freightInquiriesSection(rfq.id, freightInquiries)}
 
     ${supplierComparisonSection(supplierComparison)}
 

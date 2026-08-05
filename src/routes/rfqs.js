@@ -13,6 +13,7 @@ const {
   getLineItemSourcing,
   getCurrencyRates,
   getSupplierInquiriesForRfq,
+  getFreightInquiriesForRfq,
 } = require("../db/rfqQueries");
 const { buildOrderSummary, buildLineItemMargins } = require("../db/orderSummary");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
@@ -51,6 +52,8 @@ router.get("/:id", (req, res) => {
     supplierInquiries.map((inquiry) => [inquiry.id, getSupplierInquiryAttachments(db, inquiry.id)])
   );
 
+  const freightInquiries = getFreightInquiriesForRfq(db, rfq.id);
+
   const order = getOrderForRfq(db, rfq.id);
   const shipments = order ? getShipmentsForOrder(db, order.id) : [];
 
@@ -67,6 +70,7 @@ router.get("/:id", (req, res) => {
       rfqAttachments,
       supplierInquiries,
       supplierInquiryAttachmentsByInquiryId,
+      freightInquiries,
       order,
       shipments,
     })
