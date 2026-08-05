@@ -20,7 +20,9 @@ app.get("/healthz", (req, res) => res.json({ status: "ok" }));
 // rfqIntake must be mounted before rfqs: both live at /rfqs, and rfqs.js's
 // GET /:id would otherwise swallow GET /rfqs/new (treating "new" as an id).
 app.use("/rfqs", require("./routes/rfqIntake"));
+app.use("/rfqs", require("./routes/rfqAttachments")); // customer attachments only — see src/db/schema.js
 app.use("/rfqs", require("./routes/rfqs"));
+app.use("/supplier-inquiries", require("./routes/supplierInquiryAttachments")); // supplier-facing attachments only
 
 app.get("/", (req, res) => {
   res.send(

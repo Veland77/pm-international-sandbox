@@ -12,8 +12,11 @@ const {
   getSupplierComparison,
   getLineItemSourcing,
   getCurrencyRates,
+  getSupplierInquiriesForRfq,
 } = require("../db/rfqQueries");
 const { buildOrderSummary, buildLineItemMargins } = require("../db/orderSummary");
+const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
+const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
 const { rfqListPage } = require("../views/rfqList");
 const { rfqDetailPage } = require("../views/rfqDetail");
 
@@ -41,6 +44,12 @@ router.get("/:id", (req, res) => {
   const orderSummary = buildOrderSummary({ quoteLineItems, sourcingRows, rates });
   const lineItemMargins = buildLineItemMargins({ quoteLineItems, sourcingRows, rates });
 
+  const rfqAttachments = getRfqAttachments(db, rfq.id);
+  const supplierInquiries = getSupplierInquiriesForRfq(db, rfq.id);
+  const supplierInquiryAttachmentsByInquiryId = new Map(
+    supplierInquiries.map((inquiry) => [inquiry.id, getSupplierInquiryAttachments(db, inquiry.id)])
+  );
+
   res.send(
     rfqDetailPage({
       rfq,
@@ -51,6 +60,9 @@ router.get("/:id", (req, res) => {
       sourcingRows,
       orderSummary,
       lineItemMargins,
+      rfqAttachments,
+      supplierInquiries,
+      supplierInquiryAttachmentsByInquiryId,
     })
   );
 });

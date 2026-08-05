@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 9;
+const SCHEMA_VERSION = 10;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -209,6 +209,35 @@ CREATE TABLE IF NOT EXISTS currency_rates (
   currency_code TEXT PRIMARY KEY,
   rate_to_usd REAL NOT NULL,
   as_of_date TEXT NOT NULL
+);
+
+-- Confidentiality boundary: customer attachments and supplier-facing
+-- attachments are two separate tables, on purpose. PM has exclusivity
+-- with some customers in certain markets, and suppliers must never see
+-- which end customer an inquiry is for. Nothing in this codebase should
+-- ever copy a row from one of these tables into the other.
+
+-- The customer's original files. Never referenced from any supplier-facing
+-- route or view.
+CREATE TABLE IF NOT EXISTS rfq_attachments (
+  id INTEGER PRIMARY KEY,
+  rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
+  original_filename TEXT NOT NULL,
+  stored_filename TEXT NOT NULL UNIQUE,  -- randomized on disk; original_filename is for display/download only
+  uploaded_date TEXT NOT NULL,
+  mime_type TEXT NOT NULL
+);
+
+-- Files manually uploaded when preparing an outbound inquiry to a vendor.
+-- Completely separate from rfq_attachments — never auto-copied or derived
+-- from it.
+CREATE TABLE IF NOT EXISTS supplier_inquiry_attachments (
+  id INTEGER PRIMARY KEY,
+  supplier_inquiry_id INTEGER NOT NULL REFERENCES supplier_inquiries(id),
+  original_filename TEXT NOT NULL,
+  stored_filename TEXT NOT NULL UNIQUE,
+  uploaded_date TEXT NOT NULL,
+  mime_type TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS schema_meta (

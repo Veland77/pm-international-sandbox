@@ -81,6 +81,14 @@ const CURRENCY_RATES_QUERY = `
   SELECT currency_code, rate_to_usd, as_of_date FROM currency_rates
 `;
 
+const SUPPLIER_INQUIRIES_FOR_RFQ_QUERY = `
+  SELECT DISTINCT si.id, si.inquiry_number, s.name AS supplier_name
+  FROM supplier_inquiries si
+  JOIN suppliers s ON s.id = si.supplier_id
+  WHERE si.rfq_id = ?
+  ORDER BY si.inquiry_number
+`;
+
 function listRfqs(db) {
   return db.prepare(LIST_QUERY).all();
 }
@@ -113,6 +121,10 @@ function getCurrencyRates(db) {
   return db.prepare(CURRENCY_RATES_QUERY).all();
 }
 
+function getSupplierInquiriesForRfq(db, rfqId) {
+  return db.prepare(SUPPLIER_INQUIRIES_FOR_RFQ_QUERY).all(rfqId);
+}
+
 module.exports = {
   listRfqs,
   getRfqById,
@@ -122,4 +134,5 @@ module.exports = {
   getSupplierComparison,
   getLineItemSourcing,
   getCurrencyRates,
+  getSupplierInquiriesForRfq,
 };

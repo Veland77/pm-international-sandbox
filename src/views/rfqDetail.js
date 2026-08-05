@@ -3,6 +3,8 @@
 
 const { layout } = require("./layout");
 const { escapeHtml } = require("./htmlHelpers");
+const { rfqAttachmentsSection } = require("./rfqAttachmentsSection");
+const { supplierInquiryAttachmentsSection } = require("./supplierInquiryAttachmentsSection");
 
 function orderSummaryBlock(rfq, quote, orderSummary) {
   const { totalOrderValueUsd, grossProfitUsd, grossProfitPct, estimatedArrivalDate } = orderSummary;
@@ -136,6 +138,9 @@ function rfqDetailPage({
   sourcingRows = [],
   orderSummary,
   lineItemMargins = new Map(),
+  rfqAttachments = [],
+  supplierInquiries = [],
+  supplierInquiryAttachmentsByInquiryId = new Map(),
 }) {
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
@@ -173,6 +178,10 @@ function rfqDetailPage({
     ${quoteSection(quote, quoteLineItems)}
 
     ${supplierComparisonSection(supplierComparison)}
+
+    ${rfqAttachmentsSection(rfq.id, rfqAttachments)}
+
+    ${supplierInquiryAttachmentsSection(supplierInquiries, supplierInquiryAttachmentsByInquiryId)}
   `;
 
   return layout({ title: rfq.rfq_number, bodyHtml: body });

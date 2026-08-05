@@ -198,11 +198,13 @@ const seedTransaction = db.transaction(() => {
   db.exec(`
     DELETE FROM customer_quote_options; DELETE FROM line_item_sourcing;
     DELETE FROM supplier_quote_line_items;
+    DELETE FROM supplier_inquiry_attachments;
     DELETE FROM supplier_quotes; DELETE FROM supplier_inquiry_line_items;
     DELETE FROM supplier_inquiries; DELETE FROM suppliers; DELETE FROM item_numbers;
     DELETE FROM currency_rates;
     DELETE FROM schema_meta;
     DELETE FROM activities; DELETE FROM quote_line_items; DELETE FROM quotes;
+    DELETE FROM rfq_attachments;
     DELETE FROM rfq_line_items; DELETE FROM rfqs; DELETE FROM contacts;
     DELETE FROM accounts; DELETE FROM users;
     DELETE FROM materials; DELETE FROM product_forms; DELETE FROM standards;
