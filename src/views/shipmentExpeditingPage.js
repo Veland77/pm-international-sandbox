@@ -143,7 +143,7 @@ function shipmentExpeditingPage({ shipment, milestones, logEntries, documents })
   const body = `
     <a class="back-link" href="/orders/${shipment.order_id}">&larr; Back to ${escapeHtml(shipment.po_number)}</a>
     <h1>Expediting — ${escapeHtml(shipment.supplier_name || "Shipment")}</h1>
-    <p>${escapeHtml(shipment.rfq_number)} &middot; ${escapeHtml(shipment.po_number)}</p>
+    <p>${escapeHtml(shipment.job_number)} &middot; ${escapeHtml(shipment.po_number)}</p>
 
     ${logisticsSummary(shipment)}
 

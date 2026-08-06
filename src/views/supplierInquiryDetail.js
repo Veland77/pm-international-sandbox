@@ -65,7 +65,7 @@ function quoteSection(quote, quoteLineItems) {
 
 function supplierInquiryDetailPage({ inquiry, lineItems, quote, quoteLineItems, attachments }) {
   const body = `
-    <a class="back-link" href="/rfqs/${inquiry.rfq_id}">&larr; Back to ${escapeHtml(inquiry.rfq_number)}</a>
+    <a class="back-link" href="/rfqs/${inquiry.rfq_id}">&larr; Back to ${escapeHtml(inquiry.job_number)}</a>
     <h1>${escapeHtml(inquiry.inquiry_number)} — ${escapeHtml(inquiry.supplier_name)}</h1>
     <p>Status: ${escapeHtml(inquiry.outreach_status)} &middot; Sent: ${escapeHtml(formatDate(inquiry.sent_date))}</p>
 

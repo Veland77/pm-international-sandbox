@@ -118,8 +118,8 @@ function quoteNewFormPage({
     : "—";
 
   const body = `
-    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
-    <h1>${isEditing ? "Edit Draft Quote" : "Create Quote"} — ${escapeHtml(rfq.rfq_number)}</h1>
+    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
+    <h1>${isEditing ? "Edit Draft Quote" : "Create Quote"} — ${escapeHtml(rfq.job_number)}</h1>
     ${errorList(errors)}
     ${negativeMarginWarning(hasNegativeMargin, formValues.confirm_negative_margin)}
 
@@ -174,7 +174,7 @@ function quoteNewFormPage({
     <script src="/quoteBuild.js"></script>
   `;
 
-  return layout({ title: `${isEditing ? "Edit" : "Create"} Quote — ${rfq.rfq_number}`, bodyHtml: body });
+  return layout({ title: `${isEditing ? "Edit" : "Create"} Quote — ${rfq.job_number}`, bodyHtml: body });
 }
 
 module.exports = { quoteNewFormPage };

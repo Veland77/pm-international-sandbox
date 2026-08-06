@@ -43,8 +43,8 @@ function inquiryNewFormPage({ rfq, lineItems, suppliers, formValues = {}, errors
     .join("");
 
   const body = `
-    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
-    <h1>New Sourcing Inquiry — ${escapeHtml(rfq.rfq_number)}</h1>
+    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
+    <h1>New Sourcing Inquiry — ${escapeHtml(rfq.job_number)}</h1>
     ${errorList(errors)}
     <form method="POST" action="/rfqs/${rfq.id}/inquiries">
       <div class="card">
@@ -73,7 +73,7 @@ function inquiryNewFormPage({ rfq, lineItems, suppliers, formValues = {}, errors
     </form>
   `;
 
-  return layout({ title: `New Inquiry — ${rfq.rfq_number}`, bodyHtml: body });
+  return layout({ title: `New Inquiry — ${rfq.job_number}`, bodyHtml: body });
 }
 
 module.exports = { inquiryNewFormPage };

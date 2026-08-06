@@ -40,10 +40,10 @@ const productFormId = db.prepare("INSERT INTO product_forms (name) VALUES (?)").
 
 const rfqId = db
   .prepare(
-    `INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rfqs (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  .run("RFQ-TEST-4", accountId, contactId, userId, "Test Project", "Quoting", "Sourcing", "2026-01-01", "2026-02-01")
+  .run("RFQ-TEST-4", "PM-TEST-4", accountId, contactId, userId, "Test Project", "Quoting", "Sourcing", "2026-01-01", "2026-02-01")
   .lastInsertRowid;
 
 const line1Id = db

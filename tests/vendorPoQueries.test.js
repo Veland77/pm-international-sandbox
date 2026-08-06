@@ -33,10 +33,10 @@ const contactId = db
 
 const rfqId = db
   .prepare(
-    `INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rfqs (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  .run("RFQ-TEST-11", accountId, contactId, userId, "Test Project", "Won", "Closed", "2026-01-01", "2026-02-01")
+  .run("RFQ-TEST-11", "PM-TEST-11", accountId, contactId, userId, "Test Project", "Won", "Closed", "2026-01-01", "2026-02-01")
   .lastInsertRowid;
 
 const quoteId = db

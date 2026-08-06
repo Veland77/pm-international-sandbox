@@ -25,7 +25,7 @@ function lineItemComparePage({ rfq, lineItem, vendorQuotes }) {
   const noQuotesYet = vendorQuotes.length === 0;
 
   const body = `
-    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
+    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
     <h1>Compare Vendors — ${escapeHtml(lineItem.description)}</h1>
     <p>
       ${escapeHtml(lineItem.material_name)} &middot; ${escapeHtml(lineItem.product_form_name)} &middot;

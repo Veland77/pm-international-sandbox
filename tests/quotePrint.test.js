@@ -39,10 +39,10 @@ const contactId = db
 
 const rfqId = db
   .prepare(
-    `INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rfqs (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  .run("RFQ-TEST-9", accountId, contactId, userId, "Test Project", "Quoting", "Sourcing", "2026-01-01", "2026-02-01")
+  .run("RFQ-TEST-9", "PM-TEST-9", accountId, contactId, userId, "Test Project", "Quoting", "Sourcing", "2026-01-01", "2026-02-01")
   .lastInsertRowid;
 
 const lineItemId = db
@@ -105,6 +105,7 @@ db.prepare(
 test("getQuoteForPrint returns customer identity and quote metadata — customer identity is fine here", () => {
   const quote = getQuoteForPrint(db, quoteId);
   assert.equal(quote.quote_number, "Q-TEST-9");
+  assert.equal(quote.job_number, "PM-TEST-9");
   assert.equal(quote.account_name, "Test Customer Co");
   assert.equal(quote.contact_name, "Test Contact");
   assert.equal(quote.sales_rep_name, "Casey Test");

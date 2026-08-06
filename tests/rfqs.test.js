@@ -44,10 +44,10 @@ const standardId = db
 
 const rfqId = db
   .prepare(
-    `INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, created_date, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rfqs (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, created_date, due_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  .run("RFQ-TEST-1", accountId, contactId, userId, "Test Project", "Quoted", "2026-01-01", "2026-02-01")
+  .run("RFQ-TEST-1", "PM-TEST-1", accountId, contactId, userId, "Test Project", "Quoted", "2026-01-01", "2026-02-01")
   .lastInsertRowid;
 
 const lineItemId = db
@@ -71,7 +71,7 @@ db.prepare(
 
 test("listRfqs returns the RFQ joined with account and sales rep names", () => {
   const rfqs = listRfqs(db);
-  const found = rfqs.find((r) => r.rfq_number === "RFQ-TEST-1");
+  const found = rfqs.find((r) => r.job_number === "PM-TEST-1");
   assert.ok(found, "expected test RFQ to appear in the list");
   assert.equal(found.account_name, "Test Account");
   assert.equal(found.sales_rep_name, "Test Rep");

@@ -28,6 +28,21 @@ function getNextRfqNumber(db) {
   return `RFQ-${maxN + 1}`;
 }
 
+// Same approach as getNextRfqNumber — existing job_number values look
+// like "PM-100001", take the highest trailing number and add one. This is
+// the stable, end-to-end reference for the deal (see schema.js's rfqs
+// comment); rfq_number keeps being generated alongside it as the
+// RFQ record's own internal sub-reference, unchanged.
+function getNextJobNumber(db) {
+  const rows = db.prepare("SELECT job_number FROM rfqs").all();
+  const maxN = rows.reduce((max, r) => {
+    const match = /(\d+)$/.exec(r.job_number);
+    const n = match ? parseInt(match[1], 10) : 0;
+    return Math.max(max, n);
+  }, 100000);
+  return `PM-${maxN + 1}`;
+}
+
 // item_numbers.id is a monotonically increasing, never-reused surrogate
 // key, so it doubles as the traceability sequence — this continues cleanly
 // from wherever the seed data (or prior form submissions) left off.
@@ -49,9 +64,9 @@ function createRfqWithLineItems(db, input) {
   );
   const insertRfq = db.prepare(`
     INSERT INTO rfqs
-      (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage,
+      (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage,
        created_date, due_date, customer_requested_delivery_date)
-    VALUES (?, ?, ?, ?, ?, 'New', 'New', ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, 'New', 'New', ?, ?, ?)
   `);
   const insertLineItem = db.prepare(`
     INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, standard_id, description, quantity, unit, length_m)
@@ -88,10 +103,12 @@ function createRfqWithLineItems(db, input) {
         : input.contactId;
 
     const rfqNumber = getNextRfqNumber(db);
+    const jobNumber = getNextJobNumber(db);
     const today = todayDate();
 
     const rfqId = insertRfq.run(
       rfqNumber,
+      jobNumber,
       accountId,
       contactId,
       input.salesRepId,
@@ -128,10 +145,16 @@ function createRfqWithLineItems(db, input) {
       insertItemNumber.run(itemNumber, lineId, li.productFormId, li.materialId, li.description, today);
     });
 
-    return { rfqId, rfqNumber };
+    return { rfqId, rfqNumber, jobNumber };
   });
 
   return run();
 }
 
-module.exports = { getFormOptions, getNextRfqNumber, getNextItemNumberSequence, createRfqWithLineItems };
+module.exports = {
+  getFormOptions,
+  getNextRfqNumber,
+  getNextJobNumber,
+  getNextItemNumberSequence,
+  createRfqWithLineItems,
+};

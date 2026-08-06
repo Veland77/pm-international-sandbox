@@ -16,7 +16,7 @@
 const QUOTE_PRINT_HEADER_QUERY = `
   SELECT q.id, q.quote_number, q.status, q.created_date, q.valid_until, q.promised_delivery_date,
          q.freight_sell_price_usd,
-         r.id AS rfq_id, r.rfq_number, r.project_name,
+         r.id AS rfq_id, r.job_number, r.project_name,
          a.name AS account_name,
          c.name AS contact_name, c.email AS contact_email,
          u.name AS sales_rep_name

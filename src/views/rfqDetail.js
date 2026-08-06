@@ -412,7 +412,7 @@ function rfqDetailPage({
 
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
-    <h1>${escapeHtml(rfq.rfq_number)} — ${escapeHtml(rfq.project_name)}</h1>
+    <h1>${escapeHtml(rfq.job_number)} — ${escapeHtml(rfq.project_name)} <span style="color: var(--color-text-muted); font-size: 0.6em; font-weight: normal;">(${escapeHtml(rfq.rfq_number)})</span></h1>
     <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(formatDate(rfq.created_date))} &middot; Due: ${escapeHtml(formatDate(rfq.due_date))}${order ? ` &middot; <a href="/orders/${order.id}">View Order (${escapeHtml(order.po_number)}) &rarr;</a>` : ""}</p>
 
     ${orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate, shipmentSizeEstimate)}
@@ -459,7 +459,7 @@ function rfqDetailPage({
     ${supplierInquiryAttachmentsSection(supplierInquiries, supplierInquiryAttachmentsByInquiryId)}
   `;
 
-  return layout({ title: rfq.rfq_number, bodyHtml: body });
+  return layout({ title: rfq.job_number, bodyHtml: body });
 }
 
 module.exports = { rfqDetailPage };

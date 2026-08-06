@@ -32,10 +32,10 @@ const contactId = db
 
 const rfqId = db
   .prepare(
-    `INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rfqs (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  .run("RFQ-TEST-1", accountId, contactId, userId, "Test Project", "Sourcing", "Sourcing", "2026-01-01", "2026-02-15")
+  .run("RFQ-TEST-1", "PM-TEST-1", accountId, contactId, userId, "Test Project", "Sourcing", "Sourcing", "2026-01-01", "2026-02-15")
   .lastInsertRowid;
 
 const supplierId = db
@@ -54,6 +54,7 @@ test("getInquiryForPrint returns the fields the print document needs", () => {
   assert.equal(inquiry.supplier_name, "Test Supplier");
   assert.equal(inquiry.sales_rep_name, "Casey Test");
   assert.equal(inquiry.due_date, "2026-02-15");
+  assert.equal(inquiry.job_number, "PM-TEST-1");
 });
 
 test("getInquiryForPrint never includes customer-identifying fields", () => {

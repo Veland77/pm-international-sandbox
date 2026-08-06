@@ -2,7 +2,9 @@
 // Print-friendly Sourcing Inquiry document — no app chrome or navigation,
 // designed to be saved as PDF via the browser's print dialog and attached
 // to an email manually. Nothing customer-identifying appears anywhere: no
-// account name, no contact name, no customer PO reference. The sandbox
+// account name, no contact name, no customer PO reference. Job No IS
+// shown — it's PM's own end-to-end deal reference, not customer identity
+// (see schema.js's rfqs comment). The sandbox
 // banner stays visible (including when printed) per house rules — it's
 // non-negotiable, even on a page that otherwise strips all chrome. Kept
 // standalone (own inline styles, not linking styles.css) so it stays
@@ -70,6 +72,7 @@ function inquiryPrintPage({ inquiry, lineItems, attachments, responseRequestedBy
   <header>
     <h1>PM International Suppliers, LLC — Sourcing Inquiry</h1>
     <div class="meta">
+      <p><strong>Job No:</strong> ${escapeHtml(inquiry.job_number)}</p>
       <p><strong>Inquiry #:</strong> ${escapeHtml(inquiry.inquiry_number)}</p>
       <p><strong>Date Issued:</strong> ${escapeHtml(formatDate(inquiry.sent_date))}</p>
       <p><strong>Response Requested By:</strong> ${escapeHtml(formatDate(responseRequestedBy))}</p>

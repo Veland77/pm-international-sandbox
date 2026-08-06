@@ -9,7 +9,7 @@ function rfqListPage(rfqs) {
     .map(
       (r) => `
     <tr>
-      <td><a href="/rfqs/${r.id}">${escapeHtml(r.rfq_number)}</a></td>
+      <td><a href="/rfqs/${r.id}">${escapeHtml(r.job_number)}</a></td>
       <td>${escapeHtml(r.account_name)}</td>
       <td>${escapeHtml(r.project_name)}</td>
       <td>${escapeHtml(r.status)}</td>
@@ -26,7 +26,7 @@ function rfqListPage(rfqs) {
     <div class="card">
       <table>
         <thead>
-          <tr><th>RFQ #</th><th>Account</th><th>Project</th><th>Status</th><th>Sales Rep</th><th>Due Date</th></tr>
+          <tr><th>Job No</th><th>Account</th><th>Project</th><th>Status</th><th>Sales Rep</th><th>Due Date</th></tr>
         </thead>
         <tbody>${rows || '<tr><td colspan="6">No RFQs found.</td></tr>'}</tbody>
       </table>

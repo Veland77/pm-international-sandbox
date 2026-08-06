@@ -28,9 +28,9 @@ function freightQuoteComparePage({ rfq, freightInquiryId, supplierName, quotes }
   const noQuotesYet = quotes.length === 0;
 
   const body = `
-    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
+    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
     <h1>Compare Freight Quotes — ${escapeHtml(supplierName)} Pickup</h1>
-    <p>${escapeHtml(rfq.rfq_number)}</p>
+    <p>${escapeHtml(rfq.job_number)}</p>
 
     <div class="card">
       ${

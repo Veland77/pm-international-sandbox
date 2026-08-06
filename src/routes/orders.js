@@ -96,6 +96,7 @@ router.get("/:id/po/:supplierId/print", (req, res) => {
   res.send(
     poPrintPage({
       poNumber,
+      jobNumber: orderHeader.job_number,
       orderDate: orderHeader.order_date,
       issuedDate: issuance.issued_date,
       supplier,

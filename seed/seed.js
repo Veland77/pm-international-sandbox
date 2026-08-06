@@ -162,9 +162,9 @@ const insertProductForm = db.prepare("INSERT INTO product_forms (name) VALUES (?
 const insertStandard = db.prepare("INSERT INTO standards (code, description) VALUES (?, ?)");
 const insertRfq = db.prepare(`
   INSERT INTO rfqs
-    (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage,
+    (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage,
      created_date, due_date, customer_requested_delivery_date)
-  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 const insertRfqLine = db.prepare(`
   INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, standard_id, description, quantity, unit, length_m)
@@ -331,6 +331,7 @@ const seedTransaction = db.transaction(() => {
   });
 
   let rfqCounter = 1001;
+  let jobCounter = 100000;
   let quoteCounter = 5001;
   let inquiryCounter = 9001;
   let poCounter = 6001;
@@ -345,6 +346,11 @@ const seedTransaction = db.transaction(() => {
   function nextFrqNumber() {
     return `FRQ-${frqCounter++}`;
   }
+  // job_number: the stable, end-to-end reference for the deal — assigned
+  // once per RFQ, same as rfq_number, in the same order it's created.
+  function nextJobNumber() {
+    return `PM-${jobCounter++}`;
+  }
 
   // Captured per RFQ so the end-to-end order seed below (after this loop)
   // can reference a specific RFQ's line items/quote without re-querying —
@@ -358,8 +364,10 @@ const seedTransaction = db.transaction(() => {
     const pipelineStage = PIPELINE_STAGE_BY_STATUS[status];
 
     const rfqNumber = `RFQ-${rfqCounter++}`;
+    const jobNumber = nextJobNumber();
     const rfqId = insertRfq.run(
       rfqNumber,
+      jobNumber,
       accountId,
       contactId,
       salesRepId,
@@ -677,8 +685,10 @@ const seedTransaction = db.transaction(() => {
   ).lastInsertRowid;
 
   const meridianRfqNumber = `RFQ-${rfqCounter++}`;
+  const meridianJobNumber = nextJobNumber();
   const meridianRfqId = insertRfq.run(
     meridianRfqNumber,
+    meridianJobNumber,
     meridianAccountId,
     meridianContactId,
     userIds[0],

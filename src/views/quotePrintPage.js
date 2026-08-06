@@ -83,7 +83,7 @@ function quotePrintPage({ quote, lineItems, freightLine, grandTotalUsd, shipment
     <h1>PM International Suppliers, LLC — Quote</h1>
     <div class="meta">
       <p><strong>Quote #:</strong> ${escapeHtml(quote.quote_number)}</p>
-      <p><strong>Reference:</strong> ${escapeHtml(quote.rfq_number)} — ${escapeHtml(quote.project_name)}</p>
+      <p><strong>Job No:</strong> ${escapeHtml(quote.job_number)} — ${escapeHtml(quote.project_name)}</p>
       <p><strong>Date Issued:</strong> ${escapeHtml(formatDate(quote.created_date))}</p>
       <p><strong>Valid Until:</strong> ${escapeHtml(formatDate(quote.valid_until))}</p>
       ${quote.promised_delivery_date ? `<p><strong>Promised Delivery:</strong> ${escapeHtml(formatDate(quote.promised_delivery_date))}</p>` : ""}

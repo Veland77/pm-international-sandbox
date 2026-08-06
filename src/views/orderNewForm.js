@@ -57,8 +57,8 @@ function orderNewFormPage({ rfq, sourcedLineItems, freightSellPriceUsd = null, f
   const totalValue = itemsTotal + (freightSellPriceUsd || 0);
 
   const body = `
-    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
-    <h1>Convert to Order — ${escapeHtml(rfq.rfq_number)}</h1>
+    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
+    <h1>Convert to Order — ${escapeHtml(rfq.job_number)}</h1>
     ${errorList(errors)}
     <form method="POST" action="/rfqs/${rfq.id}/convert-to-order">
       <div class="card">
@@ -89,7 +89,7 @@ function orderNewFormPage({ rfq, sourcedLineItems, freightSellPriceUsd = null, f
     </form>
   `;
 
-  return layout({ title: `Convert to Order — ${rfq.rfq_number}`, bodyHtml: body });
+  return layout({ title: `Convert to Order — ${rfq.job_number}`, bodyHtml: body });
 }
 
 module.exports = { orderNewFormPage };

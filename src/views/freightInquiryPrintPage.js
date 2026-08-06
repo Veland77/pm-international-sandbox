@@ -4,10 +4,11 @@
 // Nothing customer-identifying appears anywhere: no account name, no
 // contact name, no customer PO reference, and the destination is a
 // generic placeholder rather than a real customer-facing location — same
-// reasoning as inquiryPrintPage.js's exclusions. A real forwarder would
-// need at least a destination country/region to price accurately; the
-// placeholder below is a known simplification, flagged for later, not a
-// gap to silently work around.
+// reasoning as inquiryPrintPage.js's exclusions. Job No IS shown — it's
+// PM's own end-to-end deal reference, not customer identity. A real
+// forwarder would need at least a destination country/region to price
+// accurately; the placeholder below is a known simplification, flagged
+// for later, not a gap to silently work around.
 
 const { escapeHtml, formatDate, formatNumber } = require("./htmlHelpers");
 
@@ -65,6 +66,7 @@ function freightInquiryPrintPage({ inquiry, lineItems, totalWeightKg, requestedS
   <header>
     <h1>PM International Suppliers, LLC — Freight Quote Request</h1>
     <div class="meta">
+      <p><strong>Job No:</strong> ${escapeHtml(inquiry.job_number)}</p>
       <p><strong>FRQ #:</strong> ${escapeHtml(inquiry.frq_number)}</p>
       <p><strong>Date Issued:</strong> ${escapeHtml(formatDate(inquiry.sent_date))}</p>
       <p><strong>Requested Ready-to-Ship Date:</strong> ${escapeHtml(formatDate(requestedShipByDate))}</p>

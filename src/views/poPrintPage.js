@@ -4,8 +4,9 @@
 // customer-identifying appears anywhere: no account name, no contact
 // name, no customer PO reference — the opposite confidentiality
 // direction from quotePrintPage.js, same reasoning as
-// inquiryPrintPage.js/freightInquiryPrintPage.js's exclusions. The
-// destination is a generic placeholder, same known simplification
+// inquiryPrintPage.js/freightInquiryPrintPage.js's exclusions. Job No IS
+// shown — it's PM's own end-to-end deal reference, not customer identity.
+// The destination is a generic placeholder, same known simplification
 // freightInquiryPrintPage.js already uses. Kept standalone (own inline
 // styles, not linking styles.css) so it stays self-contained and
 // reliable to print/PDF regardless of network state.
@@ -34,7 +35,7 @@ function lineItemRows(lineItems) {
     .join("");
 }
 
-function poPrintPage({ poNumber, orderDate, issuedDate, supplier, lineItems }) {
+function poPrintPage({ poNumber, jobNumber, orderDate, issuedDate, supplier, lineItems }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -70,6 +71,7 @@ function poPrintPage({ poNumber, orderDate, issuedDate, supplier, lineItems }) {
   <header>
     <h1>PM International Suppliers, LLC — Purchase Order</h1>
     <div class="meta">
+      <p><strong>Job No:</strong> ${escapeHtml(jobNumber)}</p>
       <p><strong>PO #:</strong> ${escapeHtml(poNumber)}</p>
       <p><strong>Order Date:</strong> ${escapeHtml(formatDate(orderDate))}</p>
       <p><strong>Issued:</strong> ${escapeHtml(formatDate(issuedDate))}</p>

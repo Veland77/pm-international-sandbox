@@ -4,9 +4,12 @@
 // to the customer and must never show buy price/margin; this one goes to
 // a vendor and must never show anything customer-identifying. Enforced
 // structurally, not by hiding fields in the view: none of these queries
-// join accounts, contacts, rfqs, or quotes/quote_line_items at all — the
-// header query stops at orders -> purchase_orders (for the PO number
-// only), and the line items query stops at order_line_items ->
+// join accounts or contacts, or quote_line_items, at all — the header
+// query reaches only as far as orders -> purchase_orders -> quotes ->
+// rfqs (for the PO number and job_number — job_number is PM's own
+// end-to-end deal reference, not customer identity, see schema.js's rfqs
+// comment — and stops there, never continuing on to accounts/contacts),
+// and the line items query stops at order_line_items ->
 // line_item_sourcing -> supplier_quote_line_items -> supplier_quotes ->
 // supplier_inquiries. There is no path from either query to a customer
 // table, so there's nothing for a careless future edit to accidentally
@@ -35,13 +38,16 @@ const VENDORS_FOR_ORDER_QUERY = `
   ORDER BY s.name
 `;
 
-// Stops at purchase_orders for the PO number — never continues on to
-// quotes/rfqs/accounts, unlike orderQueries.js's own ORDER_QUERY which
-// needs that chain for the customer-facing order page.
+// Reaches quotes -> rfqs only to pick up job_number — stops there, never
+// continuing on to accounts/contacts, unlike orderQueries.js's own
+// ORDER_QUERY which needs that further chain for the customer-facing
+// order page.
 const ORDER_HEADER_FOR_PO_QUERY = `
-  SELECT o.id AS order_id, o.order_date, po.po_number
+  SELECT o.id AS order_id, o.order_date, po.po_number, r.job_number
   FROM orders o
   JOIN purchase_orders po ON po.id = o.po_id
+  JOIN quotes q ON q.id = po.quote_id
+  JOIN rfqs r ON r.id = q.rfq_id
   WHERE o.id = ?
 `;
 

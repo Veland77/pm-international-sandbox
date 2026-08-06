@@ -2,14 +2,14 @@
 // Read queries backing the Sourcing Inquiry detail page. Deliberately
 // excludes customer sell price/margin data — this page is oriented around
 // what was asked of a vendor and what they quoted, never PM's internal
-// pricing. The rfq_number/rfq_id included here are for an internal
+// pricing. The job_number/rfq_id included here are for an internal
 // back-link only (staff navigation), not shown to any supplier.
 
 const INQUIRY_QUERY = `
   SELECT si.id, si.inquiry_number, si.rfq_id, si.sent_date, si.status AS outreach_status,
          s.name AS supplier_name, s.country AS supplier_country, s.region AS supplier_region,
          s.specialty AS supplier_specialty,
-         r.rfq_number
+         r.job_number
   FROM supplier_inquiries si
   JOIN suppliers s ON s.id = si.supplier_id
   JOIN rfqs r ON r.id = si.rfq_id

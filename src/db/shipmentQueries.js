@@ -8,7 +8,7 @@ const SHIPMENT_QUERY = `
          sh.ship_date, sh.eta, sh.pod_received,
          s.name AS supplier_name,
          o.id AS order_id, po.po_number,
-         r.id AS rfq_id, r.rfq_number
+         r.id AS rfq_id, r.job_number
   FROM shipments sh
   LEFT JOIN suppliers s ON s.id = sh.supplier_id
   JOIN orders o ON o.id = sh.order_id

@@ -45,10 +45,10 @@ const contactId = db
 
 const rfqId = db
   .prepare(
-    `INSERT INTO rfqs (rfq_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO rfqs (rfq_number, job_number, account_id, contact_id, sales_rep_id, project_name, status, pipeline_stage, created_date, due_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
-  .run("RFQ-TEST-10", accountId, contactId, userId, "Test Project", "Won", "Closed", "2026-01-01", "2026-02-01")
+  .run("RFQ-TEST-10", "PM-TEST-10", accountId, contactId, userId, "Test Project", "Won", "Closed", "2026-01-01", "2026-02-01")
   .lastInsertRowid;
 
 const materialId = db.prepare("INSERT INTO materials (name) VALUES (?)").run("Titanium").lastInsertRowid;
@@ -141,10 +141,14 @@ test("getVendorsForOrder returns both distinct vendors sourced on this order", (
   assert.deepEqual(names, ["Vendor A", "Vendor B"]);
 });
 
-test("getOrderHeaderForPo returns the PO number/order date and never touches customer identity, by key or by value", () => {
+test("getOrderHeaderForPo returns the PO number/order date/job number and never touches customer identity, by key or by value", () => {
   const header = getOrderHeaderForPo(db, orderId);
   assert.equal(header.po_number, "PO-6001");
   assert.equal(header.order_date, "2026-02-02");
+  // job_number requires this query to reach one join further (through
+  // quotes -> rfqs) than it used to — confirms that extension actually
+  // works, and still never reaches accounts/contacts along the way.
+  assert.equal(header.job_number, "PM-TEST-10");
 
   const keys = Object.keys(header);
   assert.ok(!keys.some((k) => /account|contact/i.test(k)));

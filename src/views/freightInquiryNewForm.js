@@ -43,8 +43,8 @@ function freightInquiryNewFormPage({ rfq, sourcedLineItems, forwarders, formValu
   const selectedIds = (formValues.line_item_ids || []).map(Number);
 
   const body = `
-    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
-    <h1>New Freight Inquiry — ${escapeHtml(rfq.rfq_number)}</h1>
+    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
+    <h1>New Freight Inquiry — ${escapeHtml(rfq.job_number)}</h1>
     ${errorList(errors)}
     <form method="POST" action="/rfqs/${rfq.id}/freight-inquiries">
       <div class="card">
@@ -73,7 +73,7 @@ function freightInquiryNewFormPage({ rfq, sourcedLineItems, forwarders, formValu
     </form>
   `;
 
-  return layout({ title: `New Freight Inquiry — ${rfq.rfq_number}`, bodyHtml: body });
+  return layout({ title: `New Freight Inquiry — ${rfq.job_number}`, bodyHtml: body });
 }
 
 module.exports = { freightInquiryNewFormPage };

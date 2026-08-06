@@ -15,7 +15,7 @@ const ORDER_BY_RFQ_QUERY = `
 const ORDER_QUERY = `
   SELECT o.id, o.order_date, o.pipeline_stage,
          po.po_number, po.customer_po_reference, po.received_date, po.total_value,
-         r.id AS rfq_id, r.rfq_number, r.project_name,
+         r.id AS rfq_id, r.job_number, r.project_name,
          a.name AS account_name
   FROM orders o
   JOIN purchase_orders po ON po.id = o.po_id

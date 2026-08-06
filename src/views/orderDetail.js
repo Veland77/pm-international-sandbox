@@ -86,7 +86,7 @@ function vendorPoLinks(order, vendors, issuancesBySupplierId) {
 
 function orderDetailPage({ order, lineItems, shipments, vendors = [], issuancesBySupplierId = new Map() }) {
   const body = `
-    <a class="back-link" href="/rfqs/${order.rfq_id}">&larr; Back to ${escapeHtml(order.rfq_number)}</a>
+    <a class="back-link" href="/rfqs/${order.rfq_id}">&larr; Back to ${escapeHtml(order.job_number)}</a>
     <h1>${escapeHtml(order.po_number)} — ${escapeHtml(order.account_name)}</h1>
     <p>Pipeline Stage: ${escapeHtml(order.pipeline_stage)} &middot; Order Date: ${escapeHtml(formatDate(order.order_date))}</p>
 

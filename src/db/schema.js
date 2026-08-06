@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 18;
+const SCHEMA_VERSION = 19;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -37,7 +37,18 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 CREATE TABLE IF NOT EXISTS rfqs (
   id INTEGER PRIMARY KEY,
-  rfq_number TEXT NOT NULL UNIQUE,
+  rfq_number TEXT NOT NULL UNIQUE, -- internal sub-reference to this RFQ record specifically — an RFQ
+                                    -- can become a lost opportunity or convert into an Order with its
+                                    -- own customer_po_reference, so this alone was never a stable
+                                    -- identity for "this deal." job_number is that stable identity —
+                                    -- the one number that stays constant end-to-end and is shown as
+                                    -- the primary reference everywhere (page headers, the RFQ list,
+                                    -- every print document). rfq_number/quote_number/PO-to-vendor
+                                    -- numbers all keep existing exactly as before as internal
+                                    -- sub-references tied to their own records — nothing about how
+                                    -- those relate to each other changes.
+  job_number TEXT NOT NULL UNIQUE, -- "PM-100000" format, assigned once at RFQ creation (see
+                                    -- rfqIntakeQueries.js's getNextJobNumber), never reassigned.
   account_id INTEGER NOT NULL REFERENCES accounts(id),
   contact_id INTEGER NOT NULL REFERENCES contacts(id),
   sales_rep_id INTEGER NOT NULL REFERENCES users(id),

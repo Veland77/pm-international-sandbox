@@ -161,3 +161,11 @@ Documentation only — no code changes yet. This applies once the freight-quote-
 Documentation only — no code changes yet. This applies once a customs/tariff module gets built, not to anything currently in progress.
 
 `item_numbers` already encodes form and material for every line item (see the Form/Material code tables above). Eventually an HS (Harmonized System) code should be derivable from that same form + material combination, and combined with a shipment's destination country, used to estimate customs duties as part of landed cost — tariff treatment varies significantly by destination (e.g. certain steel grades are tariffed entering the US but not the UK), so the destination isn't optional context here, it's a required input to the estimate.
+
+## Later addition: job_number, the stable end-to-end deal reference
+
+`rfqs` gains `job_number` — format `PM-100000`, generated the same way `rfq_number` is (a plain incrementing counter, `jobCounter`/`getNextJobNumber` in seed.js/rfqIntakeQueries.js respectively), assigned once at RFQ creation, never reassigned.
+
+The problem it solves: `rfq_number` was never a stable identity for "this deal" — an RFQ can become a lost/rejected opportunity, or convert into an Order with the customer's own PO reference, so nothing stayed constant end-to-end. `job_number` is now the primary reference shown everywhere (page headers, the RFQ list, and all four print documents — INQ, FRQ, Quote, PO-to-vendor). `rfq_number`/`quote_number`/the derived PO-to-vendor number all continue to exist exactly as before as internal sub-references tied to their own records — nothing about how RFQs, Quotes, Orders, and vendor POs relate to each other changed, only which number gets shown as the headline.
+
+Confidentiality note: `job_number` is safe to show a vendor (it's PM's own internal reference, not customer identity), so it was added to `inquiryPrintQueries.js`/`freightPrintQueries.js` (which already joined `rfqs`, a one-column addition) and to `poPrintQueries.js` (which required extending its header query one join further — `orders -> purchase_orders -> quotes -> rfqs` — the first time that query has reached past `purchase_orders`; it still never reaches `accounts`/`contacts`).

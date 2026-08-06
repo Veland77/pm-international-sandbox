@@ -4,11 +4,14 @@
 // as inquiryPrintQueries.js: no account or contact data selected here at
 // all. Vendor name/country IS included — the forwarder needs real pickup
 // locations, and vendor identity isn't the confidentiality boundary here
-// (the end customer is).
+// (the end customer is). job_number IS included too — it's PM's own
+// end-to-end deal reference, not customer identity (see schema.js's rfqs
+// comment).
 
 const FREIGHT_PRINT_QUERY = `
   SELECT fi.id, fi.frq_number, fi.sent_date,
          ff.name AS freight_forwarder_name,
+         r.job_number,
          u.name AS sales_rep_name
   FROM freight_inquiries fi
   JOIN freight_forwarders ff ON ff.id = fi.freight_forwarder_id

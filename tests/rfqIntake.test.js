@@ -13,7 +13,12 @@ process.env.DATABASE_PATH = scratchDbPath;
 
 const { getDb } = require("../src/db/connection");
 const { SCHEMA } = require("../src/db/schema");
-const { getNextRfqNumber, getNextItemNumberSequence, createRfqWithLineItems } = require("../src/db/rfqIntakeQueries");
+const {
+  getNextRfqNumber,
+  getNextJobNumber,
+  getNextItemNumberSequence,
+  createRfqWithLineItems,
+} = require("../src/db/rfqIntakeQueries");
 
 const db = getDb();
 db.exec(SCHEMA);
@@ -40,6 +45,10 @@ test("getNextRfqNumber starts at RFQ-1001 when no RFQs exist", () => {
   assert.equal(getNextRfqNumber(db), "RFQ-1001");
 });
 
+test("getNextJobNumber starts at PM-100001 when no RFQs exist", () => {
+  assert.equal(getNextJobNumber(db), "PM-100001");
+});
+
 test("getNextItemNumberSequence starts at 1 when no item numbers exist", () => {
   assert.equal(getNextItemNumberSequence(db), 1);
 });
@@ -59,8 +68,10 @@ test("createRfqWithLineItems creates an RFQ for an existing account with generat
   });
 
   assert.equal(result.rfqNumber, "RFQ-1001");
+  assert.equal(result.jobNumber, "PM-100001");
 
   const rfq = db.prepare("SELECT * FROM rfqs WHERE id = ?").get(result.rfqId);
+  assert.equal(rfq.job_number, "PM-100001");
   assert.equal(rfq.account_id, accountId);
   assert.equal(rfq.contact_id, contactId);
   assert.equal(rfq.status, "New");
@@ -100,8 +111,9 @@ test("createRfqWithLineItems creates a new account and contact when accountMode 
   assert.equal(contact.account_id, account.id);
 });
 
-test("getNextRfqNumber and getNextItemNumberSequence continue after prior submissions", () => {
+test("getNextRfqNumber, getNextJobNumber, and getNextItemNumberSequence continue after prior submissions", () => {
   assert.equal(getNextRfqNumber(db), "RFQ-1003");
+  assert.equal(getNextJobNumber(db), "PM-100003");
   assert.equal(getNextItemNumberSequence(db), 3);
 });
 

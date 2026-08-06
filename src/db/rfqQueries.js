@@ -3,7 +3,7 @@
 // handlers so they can be tested directly against a database, no HTTP layer needed.
 
 const LIST_QUERY = `
-  SELECT r.id, r.rfq_number, r.project_name, r.status, r.due_date,
+  SELECT r.id, r.job_number, r.project_name, r.status, r.due_date,
          a.name AS account_name, u.name AS sales_rep_name
   FROM rfqs r
   JOIN accounts a ON a.id = r.account_id

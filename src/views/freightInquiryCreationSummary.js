@@ -25,15 +25,15 @@ function freightInquiryCreationSummaryPage({ rfq, createdInquiries }) {
       : `${createdInquiries.length} freight inquiries were created — one per vendor pickup location.`;
 
   const body = `
-    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
-    <h1>Freight Inquiries Sent — ${escapeHtml(rfq.rfq_number)}</h1>
+    <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
+    <h1>Freight Inquiries Sent — ${escapeHtml(rfq.job_number)}</h1>
     <div class="card">
       <p>${escapeHtml(countText)}</p>
       <ul>${items}</ul>
     </div>
   `;
 
-  return layout({ title: `Freight Inquiries Sent — ${rfq.rfq_number}`, bodyHtml: body });
+  return layout({ title: `Freight Inquiries Sent — ${rfq.job_number}`, bodyHtml: body });
 }
 
 module.exports = { freightInquiryCreationSummaryPage };
