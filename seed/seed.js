@@ -229,8 +229,12 @@ const insertFreightInquiryLine = db.prepare(
 );
 const insertFreightQuote = db.prepare(`
   INSERT INTO freight_quotes
-    (freight_inquiry_id, quote_ref, received_date, price, currency, transit_days, valid_until)
-  VALUES (?, ?, ?, ?, ?, ?, ?)
+    (freight_inquiry_id, quote_ref, received_date, price, currency, transit_days, valid_until, notes)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+`);
+const insertFreightQuoteSelection = db.prepare(`
+  INSERT INTO freight_quote_selection (rfq_id, supplier_id, freight_quote_id, selected_date, status)
+  VALUES (?, ?, ?, ?, 'Selected')
 `);
 const insertShipmentMilestone = db.prepare(`
   INSERT INTO shipment_milestones (shipment_id, milestone_type, estimated_date, actual_date, notes)
@@ -262,6 +266,7 @@ const seedTransaction = db.transaction(() => {
     DELETE FROM order_line_items;
     DELETE FROM shipments;
     DELETE FROM freight_inquiry_line_items;
+    DELETE FROM freight_quote_selection;
     DELETE FROM freight_quotes;
     DELETE FROM freight_inquiries;
     DELETE FROM freight_forwarders;
@@ -508,8 +513,42 @@ const seedTransaction = db.transaction(() => {
     850,
     "EUR",
     18,
-    daysFromNow(30)
+    daysFromNow(30),
+    "Ocean freight — standard transit, most economical option"
   ).lastInsertRowid;
+
+  // A second, competing freight quote for the SAME pickup location (Ferro
+  // Adriatica), sent to a different forwarder — a genuine ocean-vs-air
+  // tradeoff, so the Compare Freight Quotes screen has more than one row
+  // to actually compare rather than a single-quote list.
+  const secondFreightInquiryId = insertFreightInquiry.run(
+    nextFrqNumber(),
+    deltaRidge.rfqId,
+    freightForwarderIdByName["Rheinland Express Cargo"],
+    daysFromNow(-29),
+    "Quoted"
+  ).lastInsertRowid;
+
+  deltaRidge.lineItems.forEach((li) => {
+    insertFreightInquiryLine.run(secondFreightInquiryId, li.id);
+  });
+
+  insertFreightQuote.run(
+    secondFreightInquiryId,
+    "REC-Q-9931",
+    daysFromNow(-27),
+    2400,
+    "EUR",
+    4,
+    daysFromNow(25),
+    "Air freight — faster transit, premium pricing"
+  );
+
+  // Ferro Adriatica's ocean quote is the one actually in use (matches the
+  // shipment's freight_quote_id below) — recorded as Selected so the RFQ
+  // page and this new table agree; the air-freight quote stays available
+  // for comparison, not deleted or hidden.
+  insertFreightQuoteSelection.run(deltaRidge.rfqId, supplierIds[1], freightQuoteId, daysFromNow(-27));
 
   const deltaRidgeTotalValue = deltaRidge.lineItems.reduce(
     (sum, li) => sum + li.unitPriceUsd * li.quantity,

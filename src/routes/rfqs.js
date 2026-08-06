@@ -15,10 +15,11 @@ const {
   getSupplierInquiriesForRfq,
   getFreightInquiriesForRfq,
 } = require("../db/rfqQueries");
-const { buildOrderSummary, buildLineItemMargins } = require("../db/orderSummary");
+const { buildOrderSummary, buildLineItemMargins, toUsd } = require("../db/orderSummary");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
 const { getOrderForRfq, getShipmentsForOrder } = require("../db/orderQueries");
+const { getSelectedFreightQuotesForRfq } = require("../db/freightQuoteSelectionQueries");
 const { rfqListPage } = require("../views/rfqList");
 const { rfqDetailPage } = require("../views/rfqDetail");
 
@@ -53,6 +54,13 @@ router.get("/:id", (req, res) => {
   );
 
   const freightInquiries = getFreightInquiriesForRfq(db, rfq.id);
+  const rateMap = new Map(rates.map((r) => [r.currency_code, r.rate_to_usd]));
+  const selectedFreightBySupplierId = new Map(
+    getSelectedFreightQuotesForRfq(db, rfq.id).map((q) => [
+      q.supplier_id,
+      { freightForwarderName: q.freight_forwarder_name, usdPrice: toUsd(q.price, q.currency, rateMap) },
+    ])
+  );
 
   const order = getOrderForRfq(db, rfq.id);
   const shipments = order ? getShipmentsForOrder(db, order.id) : [];
@@ -71,6 +79,7 @@ router.get("/:id", (req, res) => {
       supplierInquiries,
       supplierInquiryAttachmentsByInquiryId,
       freightInquiries,
+      selectedFreightBySupplierId,
       order,
       shipments,
     })

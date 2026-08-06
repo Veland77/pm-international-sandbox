@@ -138,17 +138,28 @@ function supplierInquiriesSection(rfqId, inquiries) {
     </div>`;
 }
 
-function freightInquiriesSection(rfqId, freightInquiries) {
+function freightInquiriesSection(rfqId, freightInquiries, selectedFreightBySupplierId) {
   const rows = freightInquiries
-    .map(
-      (fi) => `
+    .map((fi) => {
+      const selected = fi.supplier_id != null ? selectedFreightBySupplierId.get(fi.supplier_id) : undefined;
+      const selectedForwarderText = selected ? selected.freightForwarderName : "—";
+      const selectedPriceText = selected && selected.usdPrice != null ? formatCurrency(selected.usdPrice) : "—";
+      const compareLinkText = selected ? "Change Forwarder" : "Compare Freight Quotes";
+      return `
     <tr>
       <td><a href="/freight-inquiries/${fi.id}/print">${escapeHtml(fi.frq_number)}</a></td>
       <td>${escapeHtml(fi.freight_forwarder_name)}</td>
       <td>${escapeHtml(fi.status)}</td>
       <td>${escapeHtml(fi.line_item_descriptions || "—")}</td>
-    </tr>`
-    )
+      <td>${escapeHtml(selectedForwarderText)}</td>
+      <td>${escapeHtml(selectedPriceText)}</td>
+      <td>${
+        fi.supplier_id != null
+          ? `<a href="/rfqs/${rfqId}/freight-inquiries/${fi.id}/compare">${compareLinkText}</a>`
+          : "—"
+      }</td>
+    </tr>`;
+    })
     .join("");
 
   return `
@@ -157,9 +168,9 @@ function freightInquiriesSection(rfqId, freightInquiries) {
       <p><a class="btn btn-secondary" href="/rfqs/${rfqId}/freight-inquiries/new">+ New Freight Inquiry</a></p>
       <table>
         <thead>
-          <tr><th>FRQ #</th><th>Forwarder</th><th>Status</th><th>Line Items</th></tr>
+          <tr><th>FRQ #</th><th>Forwarder</th><th>Status</th><th>Line Items</th><th>Selected Forwarder</th><th>Selected Price</th><th></th></tr>
         </thead>
-        <tbody>${rows || '<tr><td colspan="4">No freight inquiries sent yet.</td></tr>'}</tbody>
+        <tbody>${rows || '<tr><td colspan="7">No freight inquiries sent yet.</td></tr>'}</tbody>
       </table>
     </div>`;
 }
@@ -251,6 +262,7 @@ function rfqDetailPage({
   supplierInquiries = [],
   supplierInquiryAttachmentsByInquiryId = new Map(),
   freightInquiries = [],
+  selectedFreightBySupplierId = new Map(),
   order = null,
   shipments = [],
 }) {
@@ -294,7 +306,7 @@ function rfqDetailPage({
 
     ${supplierInquiriesSection(rfq.id, supplierInquiries)}
 
-    ${freightInquiriesSection(rfq.id, freightInquiries)}
+    ${freightInquiriesSection(rfq.id, freightInquiries, selectedFreightBySupplierId)}
 
     ${supplierComparisonSection(supplierComparison)}
 

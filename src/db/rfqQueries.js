@@ -93,13 +93,23 @@ const SUPPLIER_INQUIRIES_FOR_RFQ_QUERY = `
   ORDER BY si.inquiry_number
 `;
 
+// supplier_id/supplier_name is the vendor pickup location this inquiry
+// covers, derived the same way freightQuoteSelectionQueries.js does —
+// needed so the RFQ page can link each row into the right comparison group
+// and show whether that pickup location already has a selected forwarder.
 const FREIGHT_INQUIRIES_FOR_RFQ_QUERY = `
   SELECT fi.id, fi.frq_number, ff.name AS freight_forwarder_name, fi.status, fi.sent_date,
-         GROUP_CONCAT(li.description, '; ') AS line_item_descriptions
+         GROUP_CONCAT(li.description, '; ') AS line_item_descriptions,
+         supplr.id AS supplier_id, supplr.name AS supplier_name
   FROM freight_inquiries fi
   JOIN freight_forwarders ff ON ff.id = fi.freight_forwarder_id
   LEFT JOIN freight_inquiry_line_items fil ON fil.freight_inquiry_id = fi.id
   LEFT JOIN rfq_line_items li ON li.id = fil.rfq_line_item_id
+  LEFT JOIN line_item_sourcing lis ON lis.rfq_line_item_id = fil.rfq_line_item_id AND lis.status = 'Selected'
+  LEFT JOIN supplier_quote_line_items sqli ON sqli.id = lis.supplier_quote_line_item_id
+  LEFT JOIN supplier_quotes sq ON sq.id = sqli.supplier_quote_id
+  LEFT JOIN supplier_inquiries si ON si.id = sq.supplier_inquiry_id
+  LEFT JOIN suppliers supplr ON supplr.id = si.supplier_id
   WHERE fi.rfq_id = ?
   GROUP BY fi.id
   ORDER BY fi.frq_number

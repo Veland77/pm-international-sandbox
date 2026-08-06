@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 14;
+const SCHEMA_VERSION = 15;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -350,7 +350,24 @@ CREATE TABLE IF NOT EXISTS freight_quotes (
   price REAL NOT NULL,
   currency TEXT NOT NULL,
   transit_days INTEGER NOT NULL,
-  valid_until TEXT NOT NULL
+  valid_until TEXT NOT NULL,
+  notes TEXT                        -- free text from the forwarder's quote response, nullable
+);
+
+-- Which freight quote wins for a given RFQ + vendor pickup location.
+-- Scoped by (rfq_id, supplier_id) rather than a single freight_inquiry_id
+-- because comparing forwarders means comparing across SIBLING freight
+-- inquiries that cover the same vendor (one inquiry = one forwarder — see
+-- freight_inquiries above), not multiple quotes within one inquiry.
+-- Same reject-old/insert-new pattern as line_item_sourcing: selecting a
+-- different quote never deletes the prior choice, just marks it Rejected.
+CREATE TABLE IF NOT EXISTS freight_quote_selection (
+  id INTEGER PRIMARY KEY,
+  rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
+  supplier_id INTEGER NOT NULL REFERENCES suppliers(id),
+  freight_quote_id INTEGER NOT NULL REFERENCES freight_quotes(id),
+  selected_date TEXT NOT NULL,
+  status TEXT NOT NULL              -- 'Selected', 'Rejected'
 );
 
 -- All 6 rows are auto-created (blank) whenever a shipment is created, so
