@@ -11,6 +11,20 @@
     return `${sign}$${Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   }
 
+  // Mirrors marginCalc.js's parseSellPriceInput on the server — accepts a
+  // comma decimal separator (e.g. Norwegian-locale "107,07"), not just a
+  // period. Plain parseFloat("107,07") silently stops at the comma and
+  // returns 107, which would make this live preview quietly wrong rather
+  // than matching what the server will actually save.
+  function parseSellPriceInput(raw) {
+    if (raw == null) return NaN;
+    const trimmed = String(raw).trim();
+    if (trimmed === "") return NaN;
+    const normalized = /^-?\d+,\d+$/.test(trimmed) ? trimmed.replace(",", ".") : trimmed;
+    const num = Number(normalized);
+    return Number.isNaN(num) ? NaN : num;
+  }
+
   function recomputeRow(row) {
     const buy = parseFloat(row.dataset.buy);
     const freight = parseFloat(row.dataset.freight) || 0;
@@ -20,7 +34,7 @@
     const marginPctCell = row.querySelector(".quote-margin-pct");
     if (!sellInput || !marginUsdCell || !marginPctCell || Number.isNaN(buy)) return null;
 
-    const sell = parseFloat(sellInput.value);
+    const sell = parseSellPriceInput(sellInput.value);
     if (Number.isNaN(sell)) {
       marginUsdCell.textContent = "—";
       marginPctCell.textContent = "—";

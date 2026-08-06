@@ -8,6 +8,7 @@ const {
   toSourcedLineItems,
   buildLineCosts,
   buildMargin,
+  parseSellPriceInput,
   suggestSellPrice,
   buildLineItemDisplayRows,
   buildTotals,
@@ -136,6 +137,42 @@ test("suggestSellPrice treats a null freight (not yet arranged) as $0, marking u
 
 test("suggestSellPrice returns null when buy price is unknown", () => {
   assert.equal(suggestSellPrice(null, 20), null);
+});
+
+test("parseSellPriceInput accepts a period decimal", () => {
+  assert.equal(parseSellPriceInput("107.07"), 107.07);
+});
+
+test("parseSellPriceInput accepts a comma decimal (Norwegian/European locale)", () => {
+  assert.equal(parseSellPriceInput("107,07"), 107.07);
+});
+
+test("parseSellPriceInput returns null for empty, missing, or unparseable input", () => {
+  assert.equal(parseSellPriceInput(""), null);
+  assert.equal(parseSellPriceInput(undefined), null);
+  assert.equal(parseSellPriceInput(null), null);
+  assert.equal(parseSellPriceInput("abc"), null);
+});
+
+test("buildLineItemDisplayRows accepts a comma-decimal sell price and computes margin from it", () => {
+  const allLineItems = [
+    { rfq_line_item_id: 1, description: "Sourced Line", quantity: 10, unit: "EA", supplier_id: 5, supplier_name: "Vendor A" },
+  ];
+  const lineCosts = new Map([[1, { buyUnitPriceUsd: 80, freightUnitUsd: 5 }]]);
+  const rows = buildLineItemDisplayRows(allLineItems, lineCosts, { 1: "120,00" });
+
+  assert.equal(rows[0].sellUnitPriceUsd, 120);
+  assert.equal(rows[0].marginUnitUsd, 35); // 120 - 80 - 5
+});
+
+test("buildLineItemDisplayRows preserves the raw typed value (including a comma) for redisplay on error", () => {
+  const allLineItems = [
+    { rfq_line_item_id: 1, description: "Sourced Line", quantity: 10, unit: "EA", supplier_id: 5, supplier_name: "Vendor A" },
+  ];
+  const lineCosts = new Map([[1, { buyUnitPriceUsd: 80, freightUnitUsd: 5 }]]);
+  const rows = buildLineItemDisplayRows(allLineItems, lineCosts, { 1: "107,07" });
+
+  assert.equal(rows[0].sellPriceRaw, "107,07");
 });
 
 test("buildLineItemDisplayRows flags an unsourced line and excludes it from pricing", () => {

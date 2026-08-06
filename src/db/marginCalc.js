@@ -112,6 +112,22 @@ function suggestSellPrice(buyUnitPriceUsd, freightUnitUsd) {
   return buyWithMarkup + freightWithMarkup;
 }
 
+// Parses a user-typed sell price, accepting either "123.45" or the
+// Norwegian/European "123,45" (comma decimal separator) — this sandbox's
+// users are Norway-based and their OS locale types a comma, not a period.
+// A comma is only treated as a decimal separator, never a thousands
+// grouping, so "123,45" -> 123.45 but a malformed value like "1,234,56"
+// still fails to parse rather than guessing. Returns null, never NaN, so
+// callers can treat "didn't parse" and "wasn't entered" the same way.
+function parseSellPriceInput(raw) {
+  if (raw == null) return null;
+  const trimmed = String(raw).trim();
+  if (trimmed === "") return null;
+  const normalized = /^-?\d+,\d+$/.test(trimmed) ? trimmed.replace(",", ".") : trimmed;
+  const num = Number(normalized);
+  return Number.isNaN(num) ? null : num;
+}
+
 // allLineItems: rows from getRfqLineItemsWithSourcing (sourced + unsourced)
 // lineCosts: Map from buildLineCosts
 // sellPriceFormValues: { [rfqLineItemId]: "123.45" } — string form input,
@@ -130,7 +146,7 @@ function buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues) 
 
     const costs = lineCosts.get(li.rfq_line_item_id) || {};
     const raw = sellPriceFormValues[String(li.rfq_line_item_id)];
-    const sellUnitPriceUsd = raw !== undefined && raw !== "" && !Number.isNaN(Number(raw)) ? Number(raw) : null;
+    const sellUnitPriceUsd = parseSellPriceInput(raw);
     const { marginUnitUsd, marginPct } =
       sellUnitPriceUsd != null
         ? buildMargin(sellUnitPriceUsd, costs.buyUnitPriceUsd, costs.freightUnitUsd)
@@ -181,6 +197,7 @@ module.exports = {
   toSourcedLineItems,
   buildLineCosts,
   buildMargin,
+  parseSellPriceInput,
   suggestSellPrice,
   buildLineItemDisplayRows,
   buildTotals,

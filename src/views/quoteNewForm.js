@@ -49,6 +49,11 @@ function lineRows(displayRows) {
       const marginUsdText = row.marginUnitUsd == null ? "—" : formatCurrency(row.marginUnitUsd);
       const marginPctText = row.marginPct == null ? "—" : `${row.marginPct.toFixed(1)}%`;
 
+      // Sell Price is type="text", not type="number" — browsers silently
+      // blank a number input's displayed value if it isn't period-formatted,
+      // which both rejects a comma decimal (Norwegian locale) as the user
+      // types it and, worse, wipes what they typed on an error re-render.
+      // Parsing (including comma) happens server-side in marginCalc.js.
       return `
     <tr class="quote-line-row" data-buy="${row.buyUnitPriceUsd ?? ""}" data-freight="${row.freightUnitUsd ?? 0}" data-quantity="${row.quantity}">
       <td>${escapeHtml(row.description)}</td>
@@ -57,7 +62,7 @@ function lineRows(displayRows) {
       <td>${escapeHtml(row.supplierName)}</td>
       <td>${escapeHtml(buyText)}</td>
       <td>${escapeHtml(freightText)}</td>
-      <td><input type="number" step="0.01" min="0.01" class="quote-sell-price" name="sell_price[${row.rfqLineItemId}]" value="${escapeHtml(row.sellPriceRaw || "")}" required></td>
+      <td><input type="text" inputmode="decimal" class="quote-sell-price" name="sell_price[${row.rfqLineItemId}]" value="${escapeHtml(row.sellPriceRaw || "")}" required></td>
       <td class="quote-margin-usd ${marginClass(row.marginUnitUsd)}">${escapeHtml(marginUsdText)}</td>
       <td class="quote-margin-pct ${marginClass(row.marginUnitUsd)}">${escapeHtml(marginPctText)}</td>
     </tr>`;
