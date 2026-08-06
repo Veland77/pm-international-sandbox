@@ -252,6 +252,12 @@ th {
   color: var(--color-olive);
 }
 
+/* Totals row at the bottom of a table body — e.g. the Quote section. */
+.total-row td {
+  font-weight: 700;
+  background: #f7f4ec;
+}
+
 /* Forms */
 
 .form-errors {

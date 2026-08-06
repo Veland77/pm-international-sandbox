@@ -342,11 +342,25 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
       ${costMarginCells(freightRow, { showTotalSell: true })}
     </tr>`;
 
-  const totalsText = totals
-    ? `<strong>Total Sell:</strong> ${escapeHtml(formatCurrency(totals.totalSellUsd))} &middot;
-       <strong>Total Buy:</strong> ${escapeHtml(formatCurrency(totals.totalBuyUsd))} &middot;
-       <strong>Total Freight:</strong> ${escapeHtml(formatCurrency(totals.totalFreightUsd))} &middot;
-       <strong>Total Margin:</strong> <span class="${marginClass(totals.marginUsd)}">${escapeHtml(formatCurrency(totals.marginUsd))} (${totals.marginPct == null ? "—" : `${totals.marginPct.toFixed(1)}%`})</span>`
+  // A real row in the table, not a text line below it — same convention
+  // as quotePrintPage.js's own totals row. Qty/Unit/Sell Price stay blank:
+  // summing a per-unit price or mixed units doesn't mean anything. No
+  // Total Freight cell — it's redundant with what's already on screen: in
+  // "As its own line" mode it would just repeat the Freight row's own Buy
+  // Price, and in "Included in items" mode freight is already folded into
+  // each item's Buy Price, so a separate freight total would either
+  // duplicate or double-count depending on the view.
+  const totalsRow = totals
+    ? `
+    <tr class="total-row">
+      <td>Total</td>
+      <td></td>
+      <td></td>
+      <td>${escapeHtml(formatCurrency(totals.totalBuyUsd))}</td>
+      <td></td>
+      <td>${escapeHtml(formatCurrency(totals.totalSellUsd))}</td>
+      <td class="${marginClass(totals.marginUsd)}">${escapeHtml(formatCurrency(totals.marginUsd))} (${totals.marginPct == null ? "—" : `${totals.marginPct.toFixed(1)}%`})</td>
+    </tr>`
     : "";
 
   const draftActions =
@@ -367,9 +381,8 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
         <thead>
           <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Total Sell Price</th><th>Margin</th></tr>
         </thead>
-        <tbody>${quoteRows}${freightRowHtml}</tbody>
+        <tbody>${quoteRows}${freightRowHtml}${totalsRow}</tbody>
       </table>
-      ${totalsText ? `<p>${totalsText}</p>` : ""}
       <p><a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/print">Print / Create Report</a> ${draftActions}</p>
     </div>`;
 }
