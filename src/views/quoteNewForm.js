@@ -54,6 +54,15 @@ function lineRows(displayRows) {
       // which both rejects a comma decimal (Norwegian locale) as the user
       // types it and, worse, wipes what they typed on an error re-render.
       // Parsing (including comma) happens server-side in marginCalc.js.
+      //
+      // The field name is "sell_price[li<id>]", not "sell_price[<id>]" —
+      // the "li" prefix is load-bearing. express's body parser (qs) treats
+      // a bracket group as an array, not an object, whenever every key
+      // inside it looks like a plain number, silently discarding the real
+      // rfq_line_item_id and reindexing by submission order instead. A
+      // non-numeric prefix keeps qs from ever taking that path, regardless
+      // of how large or small the id is. Stripped back off server-side in
+      // quoteIntake.js.
       return `
     <tr class="quote-line-row" data-buy="${row.buyUnitPriceUsd ?? ""}" data-freight="${row.freightUnitUsd ?? 0}" data-quantity="${row.quantity}">
       <td>${escapeHtml(row.description)}</td>
@@ -62,7 +71,7 @@ function lineRows(displayRows) {
       <td>${escapeHtml(row.supplierName)}</td>
       <td>${escapeHtml(buyText)}</td>
       <td>${escapeHtml(freightText)}</td>
-      <td><input type="text" inputmode="decimal" class="quote-sell-price" name="sell_price[${row.rfqLineItemId}]" value="${escapeHtml(row.sellPriceRaw || "")}" required></td>
+      <td><input type="text" inputmode="decimal" class="quote-sell-price" name="sell_price[li${row.rfqLineItemId}]" value="${escapeHtml(row.sellPriceRaw || "")}" required></td>
       <td class="quote-margin-usd ${marginClass(row.marginUnitUsd)}">${escapeHtml(marginUsdText)}</td>
       <td class="quote-margin-pct ${marginClass(row.marginUnitUsd)}">${escapeHtml(marginPctText)}</td>
     </tr>`;

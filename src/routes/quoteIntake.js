@@ -17,6 +17,20 @@ const { quoteNewFormPage } = require("../views/quoteNewForm");
 
 const router = express.Router();
 
+// The Sell Price fields submit as "sell_price[li<rfqLineItemId>]" — see
+// quoteNewForm.js for why the "li" prefix is there (it stops express's
+// body parser from silently reinterpreting the bracket group as a
+// position-indexed array once every key in it looks like a plain number).
+// Strip it back off here so the rest of this route can key by plain
+// rfq_line_item_id, same as every other sellPriceFormValues consumer.
+function normalizeSellPriceFields(rawSellPrice) {
+  const normalized = {};
+  Object.entries(rawSellPrice || {}).forEach(([key, value]) => {
+    normalized[key.replace(/^li/, "")] = value;
+  });
+  return normalized;
+}
+
 function loadContext(db, rfqId) {
   const rfq = getRfqById(db, rfqId);
   if (!rfq) return null;
@@ -93,7 +107,7 @@ router.post("/:id/quote/new", (req, res) => {
 
   const validUntil = req.body.valid_until;
   const promisedDeliveryDate = req.body.promised_delivery_date || null;
-  const sellPriceFormValues = req.body.sell_price || {};
+  const sellPriceFormValues = normalizeSellPriceFields(req.body.sell_price);
   const confirmNegativeMargin = req.body.confirm_negative_margin === "on";
 
   const sourcedLineItemCount = context.allLineItems.filter((li) => li.supplier_id != null).length;
