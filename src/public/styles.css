@@ -357,6 +357,13 @@ textarea:focus {
    the browser's own locale formatting (e.g. DD.MM.YYYY) never shows. */
 
 .date-field-wrapper {
+  /* Must be block-level, not the <span> default of inline — an inline
+     element containing a block child (.date-field-display) and an
+     absolutely-positioned inset:0 overlay (the real <input>) doesn't get a
+     well-defined box in every browser, which can leave the invisible input
+     mis-sized/mis-positioned relative to what's actually shown, so clicks
+     land on nothing even though the field still looks normal. */
+  display: block;
   position: relative;
 }
 
