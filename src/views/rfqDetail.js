@@ -12,14 +12,17 @@ function marginClass(amount) {
   return amount >= 0 ? "text-positive" : "text-negative";
 }
 
-// Shared Buy Price / Sell Price / Margin cell group — same numbers, same
-// formatting, wherever a line item's cost/margin is shown (Line Items
-// table, Quote section). A line item's own margin is buy-vs-sell only —
-// freight is never subtracted here; it's its own aggregated row (see
-// quoteSection's freightRow), shown only on the Quote section.
-function costMarginCells(row) {
+// Shared Buy Price / Sell Price / [Total Sell Price] / Margin cell group —
+// same numbers, same formatting, wherever a line item's cost/margin is
+// shown (Line Items table, Quote section). A line item's own margin is
+// buy-vs-sell only — freight is never subtracted here; it's its own
+// aggregated row (see quoteSection's freightRow), shown only on the Quote
+// section. showTotalSell adds the Sell Price x Qty extended-total cell —
+// only quoteSection asks for it; the Line Items table doesn't.
+function costMarginCells(row, { showTotalSell = false } = {}) {
   const buyText = row.buyUnitPriceUsd == null ? "—" : formatCurrency(row.buyUnitPriceUsd);
   const sellText = row.sellUnitPriceUsd == null ? "—" : formatCurrency(row.sellUnitPriceUsd);
+  const totalSellText = row.sellUnitPriceUsd == null ? "—" : formatCurrency(row.sellUnitPriceUsd * row.quantity);
   const marginText =
     row.marginUnitUsd == null
       ? "—"
@@ -28,6 +31,7 @@ function costMarginCells(row) {
   return `
       <td>${escapeHtml(buyText)}</td>
       <td>${escapeHtml(sellText)}</td>
+      ${showTotalSell ? `<td>${escapeHtml(totalSellText)}</td>` : ""}
       <td class="${marginClass(row.marginUnitUsd)}">${escapeHtml(marginText)}</td>`;
 }
 
@@ -301,7 +305,7 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
       <td>${escapeHtml(row.description)}</td>
       <td>${escapeHtml(row.quantity)}</td>
       <td>${escapeHtml(row.unit)}</td>
-      <td colspan="3" class="text-negative">Not sourced</td>
+      <td colspan="4" class="text-negative">Not sourced</td>
     </tr>`;
       }
       // Only lines actually saved on this quote have a sell price — a
@@ -314,7 +318,7 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
       <td>${escapeHtml(row.description)}</td>
       <td>${escapeHtml(row.quantity)}</td>
       <td>${escapeHtml(row.unit)}</td>
-      ${costMarginCells(row)}
+      ${costMarginCells(row, { showTotalSell: true })}
     </tr>`;
     })
     .join("");
@@ -332,7 +336,7 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
       <td>${escapeHtml(freightRow.description)}</td>
       <td>${escapeHtml(freightRow.quantity)}</td>
       <td>${escapeHtml(freightRow.unit)}</td>
-      ${costMarginCells(freightRow)}
+      ${costMarginCells(freightRow, { showTotalSell: true })}
     </tr>`;
 
   const totalsText = totals
@@ -342,7 +346,7 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
        <strong>Total Margin:</strong> <span class="${marginClass(totals.marginUsd)}">${escapeHtml(formatCurrency(totals.marginUsd))} (${totals.marginPct == null ? "—" : `${totals.marginPct.toFixed(1)}%`})</span>`
     : "";
 
-  const actions =
+  const draftActions =
     quote.status === "Draft"
       ? `
       <a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/new">Edit Draft Quote</a>
@@ -358,12 +362,12 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
       ${freightViewToggle(rfq.id, freightDisplayMode)}
       <table>
         <thead>
-          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Margin</th></tr>
+          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Total Sell Price</th><th>Margin</th></tr>
         </thead>
         <tbody>${quoteRows}${freightRowHtml}</tbody>
       </table>
       ${totalsText ? `<p>${totalsText}</p>` : ""}
-      <p>${actions}</p>
+      <p><a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/print">Print / Create Report</a> ${draftActions}</p>
     </div>`;
 }
 

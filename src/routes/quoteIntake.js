@@ -11,9 +11,23 @@ const { getDb } = require("../db/connection");
 const { getRfqById, getLatestQuote, getQuoteLineItems } = require("../db/rfqQueries");
 const { addDays } = require("../db/orderSummary");
 const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
-const { buildLineItemDisplayRows, buildTotals, suggestSellPrice, buildFreightLineTotal, buildFreightLineItem } = require("../db/marginCalc");
+const {
+  buildLineItemDisplayRows,
+  buildTotals,
+  suggestSellPrice,
+  buildFreightLineTotal,
+  buildFreightLineItem,
+  FREIGHT_LINE_ITEM_CODE,
+} = require("../db/marginCalc");
 const { createQuote, updateDraftQuote, markQuoteAsSent } = require("../db/quoteBuildQueries");
+const {
+  getQuoteForPrint,
+  getQuoteLineItemsForPrint,
+  getQuoteShipmentSizeLineItemsForPrint,
+} = require("../db/quotePrintQueries");
+const { buildShipmentSizeEstimate } = require("../db/shipmentSizeCalc");
 const { quoteNewFormPage } = require("../views/quoteNewForm");
+const { quotePrintPage } = require("../views/quotePrintPage");
 
 const router = express.Router();
 
@@ -202,6 +216,55 @@ router.post("/:id/quote/mark-sent", (req, res) => {
   }
 
   res.redirect(`/rfqs/${rfq.id}`);
+});
+
+// Customer-facing print document — deliberately built from the narrow
+// getQuoteForPrint/getQuoteLineItemsForPrint/getQuoteShipmentSizeLineItemsForPrint
+// queries (quotePrintQueries.js), never from loadContext/getLineCostsForRfq
+// above, so buy price and margin are never fetched into this route at all,
+// not just left out of what gets rendered.
+router.get("/:id/quote/print", (req, res) => {
+  const db = getDb();
+  const rfq = getRfqById(db, req.params.id);
+  if (!rfq) {
+    return res.status(404).send("RFQ not found");
+  }
+
+  const latestQuote = getLatestQuote(db, rfq.id);
+  if (!latestQuote) {
+    return res.status(404).send("No quote yet for this RFQ");
+  }
+
+  const quote = getQuoteForPrint(db, latestQuote.id);
+  const lineItems = getQuoteLineItemsForPrint(db, latestQuote.id).map((li) => ({
+    ...li,
+    totalSellUsd: li.sell_unit_price_usd * li.quantity,
+  }));
+
+  // Always its own line on the printed document, regardless of whichever
+  // freight view happens to be toggled on the live RFQ page — a document
+  // being emailed out doesn't need to track that live-only display state,
+  // and a single freight line is the more conventional format for an
+  // external quote anyway. Same "only shows if actually saved" rule as
+  // everywhere else this quote's freight line appears.
+  const freightLine =
+    quote.freight_sell_price_usd == null
+      ? null
+      : {
+          description: `Freight (${FREIGHT_LINE_ITEM_CODE})`,
+          quantity: 1,
+          unit: "Shipment",
+          sell_unit_price_usd: quote.freight_sell_price_usd,
+          totalSellUsd: quote.freight_sell_price_usd,
+        };
+
+  const grandTotalUsd =
+    lineItems.reduce((sum, li) => sum + li.totalSellUsd, 0) + (freightLine ? freightLine.totalSellUsd : 0);
+
+  const shipmentSizeLineItems = getQuoteShipmentSizeLineItemsForPrint(db, rfq.id);
+  const shipmentSizeEstimate = buildShipmentSizeEstimate(shipmentSizeLineItems);
+
+  res.send(quotePrintPage({ quote, lineItems, freightLine, grandTotalUsd, shipmentSizeEstimate }));
 });
 
 module.exports = router;
