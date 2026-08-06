@@ -12,6 +12,21 @@ const { orderNewFormPage } = require("../views/orderNewForm");
 
 const router = express.Router();
 
+// The "Ships With" dropdowns submit as "line_item_supplier[li<rfqLineItemId>]"
+// — see orderNewForm.js for why the "li" prefix is there (it stops express's
+// body parser from silently reinterpreting the bracket group as a
+// position-indexed array once every key in it looks like a plain number,
+// which would otherwise make every reassignment on this form silently
+// no-op instead of erroring). Strip it back off here so the rest of this
+// route can key by plain rfq_line_item_id, same as before.
+function normalizeLineItemSupplierFields(rawLineItemSupplier) {
+  const normalized = {};
+  Object.entries(rawLineItemSupplier || {}).forEach(([key, value]) => {
+    normalized[key.replace(/^li/, "")] = value;
+  });
+  return normalized;
+}
+
 function loadConversionContext(db, rfqId) {
   const rfq = getRfqById(db, rfqId);
   if (!rfq) return null;
@@ -53,9 +68,7 @@ router.post("/:id/convert-to-order", (req, res) => {
 
   const customerPoReference = (req.body.customer_po_reference || "").trim();
   const receivedDate = req.body.received_date;
-  // express.urlencoded({ extended: true }) parses line_item_supplier[3]
-  // style field names into a nested object keyed by rfq_line_item_id.
-  const chosenSupplierIdByLineItemId = req.body.line_item_supplier || {};
+  const chosenSupplierIdByLineItemId = normalizeLineItemSupplierFields(req.body.line_item_supplier);
 
   const errors = [];
   if (!customerPoReference) errors.push("Enter the customer's PO reference.");

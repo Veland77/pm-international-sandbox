@@ -34,7 +34,11 @@ function lineItemRows(sourcedLineItems, distinctSuppliers, chosenSupplierIdByLin
       <td>${escapeHtml(li.unit)}</td>
       <td>${escapeHtml(formatCurrency(li.unit_price_usd * li.quantity))}</td>
       <td>
-        <select name="line_item_supplier[${li.rfq_line_item_id}]">
+        <!-- "li" prefix: without it, express's body parser (qs) treats this
+             bracket group as a positional array once every id in it looks
+             like a plain number, silently discarding the real
+             rfq_line_item_id — see orderIntake.js. -->
+        <select name="line_item_supplier[li${li.rfq_line_item_id}]">
           ${vendorOptions(distinctSuppliers, chosen)}
         </select>
       </td>
