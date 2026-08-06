@@ -1,11 +1,13 @@
 // src/db/marginCalc.js
 // Pure margin/cost calculations shared by every place on the RFQ page
-// that shows buy/freight/sell/margin: the Order Summary card, the Line
-// Items table, the Quote section, and (freight only) the Supplier
-// Comparison table. One calculation, reused everywhere — nothing computes
-// margin its own way, and nothing folds freight into buy price; they're
-// always kept as separate numbers, only summed at the point margin is
-// computed. No DB access, so this is directly unit-testable.
+// that shows buy/sell/margin: the Order Summary card, the Line Items
+// table, the Quote section, and (freight only) the Supplier Comparison
+// table. One calculation, reused everywhere — nothing computes margin its
+// own way. Freight is never folded into an item's own buy/sell/margin —
+// it's tracked per line (buildLineCosts, for allocation purposes) but
+// surfaces to a user only as its own aggregated line (buildFreightLineItem),
+// with its own buy/sell/margin, same as any other line. No DB access, so
+// this is directly unit-testable.
 
 const { toUsd } = require("./orderSummary");
 
@@ -112,6 +114,60 @@ function suggestSellPrice(buyUnitPriceUsd, freightUnitUsd) {
   return buyWithMarkup + freightWithMarkup;
 }
 
+// Freight doesn't fit the FORM-MATERIAL-YY-SEQUENCE item-numbering scheme
+// used elsewhere (it's not a material or product form) — every quote's
+// freight line gets this same fixed code instead of a generated one.
+const FREIGHT_LINE_ITEM_CODE = "FRT-SVC";
+
+// Sums the freight cost already attributed to every sourced line item
+// (buildLineCosts's per-line weight-share allocation) into the single
+// number the aggregated Freight line's buy price is built from. Reuses
+// that allocation as-is — never recomputes freight cost, only totals what
+// buildLineCosts already worked out per line.
+function buildFreightLineTotal(allLineItems, lineCosts) {
+  let total = 0;
+  allLineItems.forEach((li) => {
+    if (li.supplier_id == null) return;
+    const costs = lineCosts.get(li.rfq_line_item_id);
+    if (!costs) return;
+    total += (costs.freightUnitUsd || 0) * li.quantity;
+  });
+  return total;
+}
+
+// The one aggregated Freight line shown on the Create Quote form and the
+// saved Quote section, in place of a per-item Freight Cost column. Same
+// row shape as buildLineItemDisplayRows's output (so it shares rendering
+// and buildTotals with every other line) but synthetic: no
+// rfq_line_item_id, buy price is buildFreightLineTotal (never
+// recomputed here), sell price is whatever's been typed/saved.
+// freightSellPriceRaw: string form input, or an already-saved quote's
+// freight_sell_price_usd (also passed as a string) — same convention as
+// buildLineItemDisplayRows's sellPriceFormValues.
+function buildFreightLineItem(allLineItems, lineCosts, freightSellPriceRaw) {
+  const buyUnitPriceUsd = buildFreightLineTotal(allLineItems, lineCosts);
+  const sellUnitPriceUsd = parseSellPriceInput(freightSellPriceRaw);
+  const { marginUnitUsd, marginPct } =
+    sellUnitPriceUsd != null
+      ? buildMargin(sellUnitPriceUsd, buyUnitPriceUsd, null)
+      : { marginUnitUsd: null, marginPct: null };
+
+  return {
+    rfqLineItemId: null,
+    description: `Freight (${FREIGHT_LINE_ITEM_CODE})`,
+    quantity: 1,
+    unit: "Shipment",
+    sourced: true,
+    isFreightLine: true,
+    supplierName: null,
+    buyUnitPriceUsd,
+    sellPriceRaw: freightSellPriceRaw || "",
+    sellUnitPriceUsd,
+    marginUnitUsd,
+    marginPct,
+  };
+}
+
 // Parses a user-typed sell price, accepting either "123.45" or the
 // Norwegian/European "123,45" (comma decimal separator) — this sandbox's
 // users are Norway-based and their OS locale types a comma, not a period.
@@ -132,6 +188,13 @@ function parseSellPriceInput(raw) {
 // lineCosts: Map from buildLineCosts
 // sellPriceFormValues: { [rfqLineItemId]: "123.45" } — string form input,
 // or an already-saved quote's unit_price_usd values (also passed as strings)
+//
+// A line item's own margin is buy-vs-sell only — freight is never
+// subtracted here, even though costs.freightUnitUsd is still carried on
+// the row (used to build the aggregated Freight line's buy price via
+// buildFreightLineTotal, and still useful context). Freight's own
+// economics live entirely on that one separate line, never split back
+// across the items that happen to make up its shipment.
 function buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues) {
   return allLineItems.map((li) => {
     if (li.supplier_id == null) {
@@ -149,7 +212,7 @@ function buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues) 
     const sellUnitPriceUsd = parseSellPriceInput(raw);
     const { marginUnitUsd, marginPct } =
       sellUnitPriceUsd != null
-        ? buildMargin(sellUnitPriceUsd, costs.buyUnitPriceUsd, costs.freightUnitUsd)
+        ? buildMargin(sellUnitPriceUsd, costs.buyUnitPriceUsd, null)
         : { marginUnitUsd: null, marginPct: null };
 
     return {
@@ -171,6 +234,11 @@ function buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues) 
 
 // null when nothing priceable has a valid sell price yet, so the view can
 // show "—" instead of a misleading $0 total.
+//
+// totalFreightUsd only ever comes from a row flagged isFreightLine (see
+// buildFreightLineItem) — an array of item rows alone reports $0 freight
+// here, it never re-derives freight cost on its own. Callers that want
+// freight reflected in these totals must include that row in displayRows.
 function buildTotals(displayRows) {
   let totalSellUsd = 0;
   let totalBuyUsd = 0;
@@ -182,12 +250,14 @@ function buildTotals(displayRows) {
     any = true;
     totalSellUsd += row.sellUnitPriceUsd * row.quantity;
     totalBuyUsd += row.buyUnitPriceUsd * row.quantity;
-    totalFreightUsd += (row.freightUnitUsd || 0) * row.quantity;
+    if (row.isFreightLine) {
+      totalFreightUsd += row.buyUnitPriceUsd * row.quantity;
+    }
   });
 
   if (!any) return null;
 
-  const marginUsd = totalSellUsd - totalBuyUsd - totalFreightUsd;
+  const marginUsd = totalSellUsd - totalBuyUsd;
   const marginPct = totalSellUsd > 0 ? (marginUsd / totalSellUsd) * 100 : null;
 
   return { totalSellUsd, totalBuyUsd, totalFreightUsd, marginUsd, marginPct };
@@ -199,6 +269,9 @@ module.exports = {
   buildMargin,
   parseSellPriceInput,
   suggestSellPrice,
+  FREIGHT_LINE_ITEM_CODE,
+  buildFreightLineTotal,
+  buildFreightLineItem,
   buildLineItemDisplayRows,
   buildTotals,
 };

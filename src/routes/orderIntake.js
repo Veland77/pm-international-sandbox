@@ -51,7 +51,14 @@ router.get("/:id/convert-to-order", (req, res) => {
     return res.redirect(`/orders/${existingOrder.id}`);
   }
 
-  res.send(orderNewFormPage({ ...context, formValues: {}, errors: [] }));
+  res.send(
+    orderNewFormPage({
+      ...context,
+      freightSellPriceUsd: context.quote ? context.quote.freight_sell_price_usd : null,
+      formValues: {},
+      errors: [],
+    })
+  );
 });
 
 router.post("/:id/convert-to-order", (req, res) => {
@@ -83,6 +90,7 @@ router.post("/:id/convert-to-order", (req, res) => {
     return res.status(400).send(
       orderNewFormPage({
         ...context,
+        freightSellPriceUsd: context.quote ? context.quote.freight_sell_price_usd : null,
         formValues: {
           customer_po_reference: customerPoReference,
           received_date: receivedDate,
@@ -100,6 +108,7 @@ router.post("/:id/convert-to-order", (req, res) => {
     receivedDate,
     sourcedLineItems: context.sourcedLineItems,
     chosenSupplierIdByLineItemId,
+    freightSellPriceUsd: context.quote.freight_sell_price_usd,
   });
 
   res.redirect(`/orders/${orderId}`);

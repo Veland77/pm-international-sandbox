@@ -163,6 +163,26 @@ test("createOrderFromRfq creates one shipment per distinct vendor by default, ea
   assert.equal(orderForRfq.id, orderId);
 });
 
+test("createOrderFromRfq folds the quote's freight sell price into the PO's total_value", () => {
+  const sourcedLineItems = getSourcedLineItemsForConversion(db, rfqId, quoteId);
+
+  const { orderId } = createOrderFromRfq(db, {
+    rfqId,
+    quoteId,
+    customerPoReference: "CUST-PO-0002",
+    receivedDate: "2026-02-02",
+    sourcedLineItems,
+    chosenSupplierIdByLineItemId: {},
+    freightSellPriceUsd: 75,
+  });
+
+  const order = db.prepare("SELECT * FROM orders WHERE id = ?").get(orderId);
+  const po = db.prepare("SELECT * FROM purchase_orders WHERE id = ?").get(order.po_id);
+  // Item sell prices alone (100*10 + 200*5) no longer include freight —
+  // it has to be added back in explicitly, same as orderNewForm.js does.
+  assert.equal(po.total_value, 100 * 10 + 200 * 5 + 75);
+});
+
 test.after(() => {
   db.close();
   fs.rmSync(scratchDbPath, { force: true });

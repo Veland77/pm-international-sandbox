@@ -1,9 +1,11 @@
 // src/public/quoteBuild.js
-// Live margin recompute for the quote create/edit form. Buy price and
-// freight cost per line are embedded server-side (data-buy/data-freight
-// on each row) — this only recomputes margin/totals as a preview while
-// typing; the server recomputes authoritatively on submit, this never
-// decides what gets saved.
+// Live margin recompute for the quote create/edit form. Buy price per
+// line is embedded server-side (data-buy on each row) — this only
+// recomputes margin/totals as a preview while typing; the server
+// recomputes authoritatively on submit, this never decides what gets
+// saved. An item's own margin is buy-vs-sell only; freight is its own
+// row (data-is-freight-line="true") with its own buy/sell/margin, never
+// subtracted from an item's.
 
 (function () {
   function formatUsd(n) {
@@ -27,8 +29,8 @@
 
   function recomputeRow(row) {
     const buy = parseFloat(row.dataset.buy);
-    const freight = parseFloat(row.dataset.freight) || 0;
     const quantity = parseFloat(row.dataset.quantity) || 1;
+    const isFreightLine = row.dataset.isFreightLine === "true";
     const sellInput = row.querySelector(".quote-sell-price");
     const marginUsdCell = row.querySelector(".quote-margin-usd");
     const marginPctCell = row.querySelector(".quote-margin-pct");
@@ -43,7 +45,7 @@
       return null;
     }
 
-    const marginUsd = sell - buy - freight;
+    const marginUsd = sell - buy;
     const marginPct = sell > 0 ? (marginUsd / sell) * 100 : null;
     const cls = marginUsd >= 0 ? "text-positive" : "text-negative";
     marginUsdCell.textContent = formatUsd(marginUsd);
@@ -51,7 +53,7 @@
     marginUsdCell.className = `quote-margin-usd ${cls}`;
     marginPctCell.className = `quote-margin-pct ${cls}`;
 
-    return { sell, buy, freight, quantity };
+    return { sell, buy, quantity, isFreightLine };
   }
 
   function recomputeTotals() {
@@ -72,7 +74,7 @@
       any = true;
       totalSell += r.sell * r.quantity;
       totalBuy += r.buy * r.quantity;
-      totalFreight += r.freight * r.quantity;
+      if (r.isFreightLine) totalFreight += r.buy * r.quantity;
     });
 
     if (!any) {
@@ -84,7 +86,10 @@
       return;
     }
 
-    const marginUsd = totalSell - totalBuy - totalFreight;
+    // totalBuy already includes the freight row's own buy price (summed
+    // like any other row above) — totalFreight is only a separate display
+    // stat here, not subtracted again.
+    const marginUsd = totalSell - totalBuy;
     const marginPct = totalSell > 0 ? (marginUsd / totalSell) * 100 : null;
     sellEl.textContent = formatUsd(totalSell);
     buyEl.textContent = formatUsd(totalBuy);

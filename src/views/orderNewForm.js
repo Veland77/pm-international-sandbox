@@ -47,10 +47,14 @@ function lineItemRows(sourcedLineItems, distinctSuppliers, chosenSupplierIdByLin
     .join("");
 }
 
-function orderNewFormPage({ rfq, sourcedLineItems, formValues = {}, errors = [] }) {
+function orderNewFormPage({ rfq, sourcedLineItems, freightSellPriceUsd = null, formValues = {}, errors = [] }) {
   const distinctSuppliers = Array.from(new Map(sourcedLineItems.map((li) => [li.supplier_id, li])).values());
   const chosenSupplierIdByLineItemId = formValues.line_item_supplier || {};
-  const totalValue = sourcedLineItems.reduce((sum, li) => sum + li.unit_price_usd * li.quantity, 0);
+  // Item sell prices no longer include freight markup — it's the quote's
+  // own separate Freight line (see marginCalc.js) — so it has to be added
+  // back in here, same as the PO's own total_value (orderIntakeQueries.js).
+  const itemsTotal = sourcedLineItems.reduce((sum, li) => sum + li.unit_price_usd * li.quantity, 0);
+  const totalValue = itemsTotal + (freightSellPriceUsd || 0);
 
   const body = `
     <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.rfq_number)}</a>
@@ -78,7 +82,7 @@ function orderNewFormPage({ rfq, sourcedLineItems, formValues = {}, errors = [] 
           <tbody>${lineItemRows(sourcedLineItems, distinctSuppliers, chosenSupplierIdByLineItemId)}</tbody>
         </table>
         <p style="color: var(--color-text-muted);">Defaults to one shipment per vendor. Change "Ships With" on a line to combine it into a different vendor's shipment.</p>
-        <p><strong>Total Order Value: ${escapeHtml(formatCurrency(totalValue))}</strong></p>
+        <p><strong>Total Order Value: ${escapeHtml(formatCurrency(totalValue))}</strong>${freightSellPriceUsd ? ` <span style="color: var(--color-text-muted);">(includes ${escapeHtml(formatCurrency(freightSellPriceUsd))} freight)</span>` : ""}</p>
       </div>
 
       <p><button type="submit" class="btn btn-primary">Create Order</button></p>

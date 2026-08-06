@@ -20,10 +20,10 @@ function getNextQuoteNumber(db) {
 }
 
 // lines: [{ rfqLineItemId, sellUnitPriceUsd, leadTimeDays, targetMarginPct }]
-function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, lines }) {
+function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines }) {
   const insertQuote = db.prepare(`
-    INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date)
-    VALUES (?, ?, ?, 'Draft', ?, ?, ?)
+    INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date, freight_sell_price_usd)
+    VALUES (?, ?, ?, 'Draft', ?, ?, ?, ?)
   `);
   const insertLine = db.prepare(`
     INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
@@ -41,7 +41,8 @@ function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, lines }) {
       version,
       createdDate,
       validUntil,
-      promisedDeliveryDate || null
+      promisedDeliveryDate || null,
+      freightSellPriceUsd
     ).lastInsertRowid;
 
     lines.forEach((line) => {
@@ -62,8 +63,10 @@ function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, lines }) {
 // items are deleted and reinserted rather than updated in place: while
 // still Draft there's no history to preserve, unlike
 // line_item_sourcing/freight_quote_selection.
-function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, lines }) {
-  const updateQuote = db.prepare("UPDATE quotes SET valid_until = ?, promised_delivery_date = ? WHERE id = ?");
+function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines }) {
+  const updateQuote = db.prepare(
+    "UPDATE quotes SET valid_until = ?, promised_delivery_date = ?, freight_sell_price_usd = ? WHERE id = ?"
+  );
   const deleteLines = db.prepare("DELETE FROM quote_line_items WHERE quote_id = ?");
   const insertLine = db.prepare(`
     INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
@@ -74,7 +77,7 @@ function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, lines
     const quote = db.prepare("SELECT status FROM quotes WHERE id = ?").get(quoteId);
     if (!quote || quote.status !== "Draft") return;
 
-    updateQuote.run(validUntil, promisedDeliveryDate || null, quoteId);
+    updateQuote.run(validUntil, promisedDeliveryDate || null, freightSellPriceUsd, quoteId);
     deleteLines.run(quoteId);
     lines.forEach((line) => {
       insertLine.run(quoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.leadTimeDays, line.targetMarginPct);

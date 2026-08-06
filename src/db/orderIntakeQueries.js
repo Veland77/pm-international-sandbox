@@ -40,7 +40,7 @@ function getNextPoNumber(db) {
 
 function createOrderFromRfq(
   db,
-  { rfqId, quoteId, customerPoReference, receivedDate, sourcedLineItems, chosenSupplierIdByLineItemId }
+  { rfqId, quoteId, customerPoReference, receivedDate, sourcedLineItems, chosenSupplierIdByLineItemId, freightSellPriceUsd }
 ) {
   const insertPurchaseOrder = db.prepare(`
     INSERT INTO purchase_orders (quote_id, po_number, customer_po_reference, received_date, total_value)
@@ -65,7 +65,12 @@ function createOrderFromRfq(
   const setRfqPipelineStage = db.prepare("UPDATE rfqs SET pipeline_stage = 'PO Received' WHERE id = ?");
 
   const run = db.transaction(() => {
-    const totalValue = sourcedLineItems.reduce((sum, li) => sum + li.unit_price_usd * li.quantity, 0);
+    // Item sell prices no longer include freight markup (freight is its
+    // own line on the quote, see marginCalc.js's buildFreightLineItem) —
+    // the PO's total_value has to add it back explicitly or it silently
+    // undercounts by exactly the quote's freight line.
+    const itemsTotal = sourcedLineItems.reduce((sum, li) => sum + li.unit_price_usd * li.quantity, 0);
+    const totalValue = itemsTotal + (freightSellPriceUsd || 0);
     const poNumber = getNextPoNumber(db);
     const poId = insertPurchaseOrder.run(
       quoteId,

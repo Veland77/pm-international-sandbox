@@ -10,6 +10,9 @@ const {
   buildMargin,
   parseSellPriceInput,
   suggestSellPrice,
+  FREIGHT_LINE_ITEM_CODE,
+  buildFreightLineTotal,
+  buildFreightLineItem,
   buildLineItemDisplayRows,
   buildTotals,
 } = require("../src/db/marginCalc");
@@ -162,7 +165,7 @@ test("buildLineItemDisplayRows accepts a comma-decimal sell price and computes m
   const rows = buildLineItemDisplayRows(allLineItems, lineCosts, { 1: "120,00" });
 
   assert.equal(rows[0].sellUnitPriceUsd, 120);
-  assert.equal(rows[0].marginUnitUsd, 35); // 120 - 80 - 5
+  assert.equal(rows[0].marginUnitUsd, 40); // 120 - 80 (freight is never subtracted from an item's own margin)
 });
 
 test("buildLineItemDisplayRows preserves the raw typed value (including a comma) for redisplay on error", () => {
@@ -188,7 +191,7 @@ test("buildLineItemDisplayRows flags an unsourced line and excludes it from pric
   assert.equal(sourcedRow.buyUnitPriceUsd, 80);
   assert.equal(sourcedRow.freightUnitUsd, 5);
   assert.equal(sourcedRow.sellUnitPriceUsd, 120);
-  assert.equal(sourcedRow.marginUnitUsd, 35); // 120 - 80 - 5
+  assert.equal(sourcedRow.marginUnitUsd, 40); // 120 - 80 (freight is never subtracted from an item's own margin)
 
   const unsourcedRow = rows.find((r) => r.rfqLineItemId === 2);
   assert.equal(unsourcedRow.sourced, false);
@@ -206,21 +209,22 @@ test("buildLineItemDisplayRows leaves margin null when no sell price has been en
   assert.equal(rows[0].marginUnitUsd, null);
 });
 
-test("buildTotals aggregates buy, freight, and sell across sourced rows with a valid sell price", () => {
+test("buildTotals aggregates buy and sell across item rows plus the freight line's own buy/sell", () => {
   const displayRows = [
-    { sourced: true, sellUnitPriceUsd: 120, buyUnitPriceUsd: 85, freightUnitUsd: 5, quantity: 10 },
-    { sourced: true, sellUnitPriceUsd: null, buyUnitPriceUsd: 50, freightUnitUsd: null, quantity: 5 }, // no price yet — excluded
+    { sourced: true, sellUnitPriceUsd: 120, buyUnitPriceUsd: 85, quantity: 10 },
+    { sourced: true, sellUnitPriceUsd: null, buyUnitPriceUsd: 50, quantity: 5 }, // no price yet — excluded
     { sourced: false }, // unsourced — excluded
+    { sourced: true, isFreightLine: true, sellUnitPriceUsd: 60, buyUnitPriceUsd: 50, quantity: 1 },
   ];
   const totals = buildTotals(displayRows);
-  assert.equal(totals.totalSellUsd, 1200);
-  assert.equal(totals.totalBuyUsd, 850);
-  assert.equal(totals.totalFreightUsd, 50);
-  assert.equal(totals.marginUsd, 1200 - 850 - 50);
+  assert.equal(totals.totalSellUsd, 1200 + 60);
+  assert.equal(totals.totalBuyUsd, 850 + 50);
+  assert.equal(totals.totalFreightUsd, 50); // only from the row flagged isFreightLine
+  assert.equal(totals.marginUsd, 1200 + 60 - (850 + 50));
 });
 
-test("buildTotals treats a null freight on an otherwise-priced row as $0 contribution", () => {
-  const displayRows = [{ sourced: true, sellUnitPriceUsd: 100, buyUnitPriceUsd: 80, freightUnitUsd: null, quantity: 1 }];
+test("buildTotals reports $0 total freight when displayRows contains no freight line — it never re-derives freight cost itself", () => {
+  const displayRows = [{ sourced: true, sellUnitPriceUsd: 100, buyUnitPriceUsd: 80, quantity: 1 }];
   const totals = buildTotals(displayRows);
   assert.equal(totals.totalFreightUsd, 0);
   assert.equal(totals.marginUsd, 20);
@@ -229,4 +233,54 @@ test("buildTotals treats a null freight on an otherwise-priced row as $0 contrib
 test("buildTotals returns null when nothing has a valid sell price yet", () => {
   assert.equal(buildTotals([{ sourced: false }]), null);
   assert.equal(buildTotals([]), null);
+});
+
+test("buildFreightLineTotal sums the freight already attributed to every sourced line item, weighted by quantity", () => {
+  const allLineItems = [
+    { rfq_line_item_id: 1, quantity: 10, supplier_id: 5 },
+    { rfq_line_item_id: 2, quantity: 20, supplier_id: 5 },
+    { rfq_line_item_id: 3, quantity: 99, supplier_id: null }, // unsourced — excluded
+  ];
+  const lineCosts = new Map([
+    [1, { buyUnitPriceUsd: 69.22, freightUnitUsd: 14.86 }],
+    [2, { buyUnitPriceUsd: 105.65, freightUnitUsd: 18.57 }],
+  ]);
+  const total = buildFreightLineTotal(allLineItems, lineCosts);
+  assert.equal(total, 14.86 * 10 + 18.57 * 20);
+});
+
+test("buildFreightLineTotal treats a line with no freight arranged yet as $0, not a crash", () => {
+  const allLineItems = [{ rfq_line_item_id: 1, quantity: 10, supplier_id: 5 }];
+  const lineCosts = new Map([[1, { buyUnitPriceUsd: 69.22, freightUnitUsd: null }]]);
+  assert.equal(buildFreightLineTotal(allLineItems, lineCosts), 0);
+});
+
+test("buildFreightLineItem builds a synthetic row with the fixed item code, derived buy price, and typed sell price", () => {
+  const allLineItems = [{ rfq_line_item_id: 1, quantity: 10, supplier_id: 5 }];
+  const lineCosts = new Map([[1, { buyUnitPriceUsd: 69.22, freightUnitUsd: 14.86 }]]);
+  const row = buildFreightLineItem(allLineItems, lineCosts, "175.00");
+
+  assert.equal(row.isFreightLine, true);
+  assert.equal(row.rfqLineItemId, null);
+  assert.ok(row.description.includes(FREIGHT_LINE_ITEM_CODE));
+  assert.equal(row.buyUnitPriceUsd, 148.6); // 14.86 * 10, reused from lineCosts, never recomputed
+  assert.equal(row.sellUnitPriceUsd, 175);
+  assert.equal(row.marginUnitUsd, 175 - 148.6);
+});
+
+test("buildFreightLineItem leaves margin null when no sell price has been entered yet, but still shows the derived buy price", () => {
+  const allLineItems = [{ rfq_line_item_id: 1, quantity: 10, supplier_id: 5 }];
+  const lineCosts = new Map([[1, { buyUnitPriceUsd: 69.22, freightUnitUsd: 14.86 }]]);
+  const row = buildFreightLineItem(allLineItems, lineCosts, "");
+
+  assert.equal(row.buyUnitPriceUsd, 148.6);
+  assert.equal(row.sellUnitPriceUsd, null);
+  assert.equal(row.marginUnitUsd, null);
+});
+
+test("buildFreightLineItem accepts a comma-decimal sell price, same as an item line", () => {
+  const allLineItems = [{ rfq_line_item_id: 1, quantity: 10, supplier_id: 5 }];
+  const lineCosts = new Map([[1, { buyUnitPriceUsd: 69.22, freightUnitUsd: 14.86 }]]);
+  const row = buildFreightLineItem(allLineItems, lineCosts, "175,00");
+  assert.equal(row.sellUnitPriceUsd, 175);
 });

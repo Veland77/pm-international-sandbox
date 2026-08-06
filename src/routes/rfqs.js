@@ -16,7 +16,7 @@ const {
 } = require("../db/rfqQueries");
 const { estimateArrivalDate, toUsd } = require("../db/orderSummary");
 const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
-const { buildLineItemDisplayRows, buildTotals } = require("../db/marginCalc");
+const { buildLineItemDisplayRows, buildTotals, buildFreightLineItem } = require("../db/marginCalc");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
 const { getOrderForRfq, getShipmentsForOrder } = require("../db/orderQueries");
@@ -44,11 +44,12 @@ router.get("/:id", (req, res) => {
   const quoteLineItems = quote ? getQuoteLineItems(db, quote.id) : [];
   const rawSupplierComparison = getSupplierComparison(db, rfq.id);
 
-  // One shared calc for every buy/freight/sell/margin number on this
-  // page — the Order Summary card, the Line Items table, and the Quote
-  // section all read from the same displayRows/totals, so there's exactly
-  // one margin per line item, not a freight-exclusive and a
-  // freight-inclusive version disagreeing with each other.
+  // One shared calc for every buy/sell/margin number on this page — the
+  // Order Summary card, the Line Items table, and the Quote section all
+  // read from the same displayRows/totals, so there's exactly one margin
+  // per line item, not different versions disagreeing with each other.
+  // Freight is never part of that per-item margin — it's its own
+  // aggregated line (freightRow), folded into totals alongside the items.
   const { allLineItems, lineCosts } = getLineCostsForRfq(db, rfq.id);
   const anySourced = allLineItems.some((li) => li.supplier_id != null);
   const sellPriceFormValues = {};
@@ -56,7 +57,9 @@ router.get("/:id", (req, res) => {
     sellPriceFormValues[qli.rfq_line_item_id] = String(qli.unit_price_usd);
   });
   const displayRows = buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues);
-  const totals = buildTotals(displayRows);
+  const freightSellRaw = quote && quote.freight_sell_price_usd != null ? String(quote.freight_sell_price_usd) : "";
+  const freightRow = buildFreightLineItem(allLineItems, lineCosts, freightSellRaw);
+  const totals = buildTotals([...displayRows, freightRow]);
   const estimatedArrivalDate = estimateArrivalDate(allLineItems);
   const displayRowsByLineItemId = new Map(displayRows.map((row) => [row.rfqLineItemId, row]));
 
@@ -107,6 +110,7 @@ router.get("/:id", (req, res) => {
       lineItems,
       quote,
       displayRows,
+      freightRow,
       totals,
       anySourced,
       estimatedArrivalDate,

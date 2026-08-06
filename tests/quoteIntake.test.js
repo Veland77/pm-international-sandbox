@@ -84,11 +84,12 @@ test("getNextQuoteNumber starts after 5000 when no quotes exist", () => {
 
 let quoteId;
 
-test("createQuote creates a Draft quote with only the sourced line", () => {
+test("createQuote creates a Draft quote with only the sourced line, plus the freight line's sell price", () => {
   quoteId = createQuote(db, {
     rfqId,
     validUntil: "2026-03-01",
     promisedDeliveryDate: "2026-04-01",
+    freightSellPriceUsd: 45,
     lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 120, leadTimeDays: 12, targetMarginPct: 20 }],
   });
 
@@ -97,6 +98,7 @@ test("createQuote creates a Draft quote with only the sourced line", () => {
   assert.equal(quote.version, 1);
   assert.equal(quote.status, "Draft");
   assert.equal(quote.quote_number, "Q-5001");
+  assert.equal(quote.freight_sell_price_usd, 45);
 
   const lines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(quoteId);
   assert.equal(lines.length, 1);
@@ -104,11 +106,12 @@ test("createQuote creates a Draft quote with only the sourced line", () => {
   assert.equal(lines[0].unit_price_usd, 120);
 });
 
-test("updateDraftQuote replaces the line items in place — no second quotes row created", () => {
+test("updateDraftQuote replaces the line items in place and the freight sell price — no second quotes row created", () => {
   updateDraftQuote(db, {
     quoteId,
     validUntil: "2026-03-15",
     promisedDeliveryDate: "2026-04-01",
+    freightSellPriceUsd: 52,
     lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 135, leadTimeDays: 12, targetMarginPct: 22 }],
   });
 
@@ -117,6 +120,7 @@ test("updateDraftQuote replaces the line items in place — no second quotes row
 
   const quote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(quoteId);
   assert.equal(quote.valid_until, "2026-03-15");
+  assert.equal(quote.freight_sell_price_usd, 52);
 
   const lines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(quoteId);
   assert.equal(lines.length, 1);
@@ -137,6 +141,7 @@ test("updateDraftQuote is a no-op once the quote is no longer Draft", () => {
     quoteId,
     validUntil: "2099-01-01",
     promisedDeliveryDate: null,
+    freightSellPriceUsd: 999,
     lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 999, leadTimeDays: 1, targetMarginPct: 1 }],
   });
 
@@ -144,6 +149,7 @@ test("updateDraftQuote is a no-op once the quote is no longer Draft", () => {
   const linesAfter = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(quoteId);
 
   assert.equal(after.valid_until, before.valid_until);
+  assert.equal(after.freight_sell_price_usd, before.freight_sell_price_usd);
   assert.equal(after.status, "Sent");
   assert.deepEqual(linesAfter, linesBefore);
 });

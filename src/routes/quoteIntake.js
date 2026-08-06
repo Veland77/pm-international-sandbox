@@ -11,7 +11,7 @@ const { getDb } = require("../db/connection");
 const { getRfqById, getLatestQuote, getQuoteLineItems } = require("../db/rfqQueries");
 const { addDays } = require("../db/orderSummary");
 const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
-const { buildLineItemDisplayRows, buildTotals, suggestSellPrice } = require("../db/marginCalc");
+const { buildLineItemDisplayRows, buildTotals, suggestSellPrice, buildFreightLineTotal, buildFreightLineItem } = require("../db/marginCalc");
 const { createQuote, updateDraftQuote, markQuoteAsSent } = require("../db/quoteBuildQueries");
 const { quoteNewFormPage } = require("../views/quoteNewForm");
 
@@ -54,8 +54,9 @@ router.get("/:id/quote/new", (req, res) => {
   const existingSellByLineItemId = new Map(existingLines.map((l) => [l.rfq_line_item_id, l.unit_price_usd]));
 
   // Sourced lines with no existing quote get a suggested sell price (item
-  // cost and freight cost marked up separately, then summed) — a starting
-  // point, not a decision; fully overridable.
+  // cost marked up alone — freight carries its own markup on its own
+  // aggregated line below, never folded into an item's price) — a
+  // starting point, not a decision; fully overridable.
   const sellPriceFormValues = {};
   context.allLineItems.forEach((li) => {
     if (li.supplier_id == null) return;
@@ -65,14 +66,25 @@ router.get("/:id/quote/new", (req, res) => {
       return;
     }
     const costs = context.lineCosts.get(li.rfq_line_item_id);
-    const suggested = costs ? suggestSellPrice(costs.buyUnitPriceUsd, costs.freightUnitUsd) : null;
+    const suggested = costs ? suggestSellPrice(costs.buyUnitPriceUsd, null) : null;
     if (suggested != null) {
       sellPriceFormValues[li.rfq_line_item_id] = suggested.toFixed(2);
     }
   });
 
+  // Same suggested-vs-saved rule as every item line: an existing quote's
+  // saved freight_sell_price_usd wins; otherwise default to the freight
+  // buy total marked up at the same FREIGHT_MARKUP_PCT (suggestSellPrice
+  // with buy=0 applies only the freight markup, nothing else).
+  const freightBuyTotal = buildFreightLineTotal(context.allLineItems, context.lineCosts);
+  const freightSellRaw =
+    existingQuote && existingQuote.freight_sell_price_usd != null
+      ? String(existingQuote.freight_sell_price_usd)
+      : suggestSellPrice(0, freightBuyTotal).toFixed(2);
+  const freightRow = buildFreightLineItem(context.allLineItems, context.lineCosts, freightSellRaw);
+
   const displayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, sellPriceFormValues);
-  const totals = buildTotals(displayRows);
+  const totals = buildTotals([...displayRows, freightRow]);
 
   const defaultValidUntil = existingQuote
     ? existingQuote.valid_until
@@ -83,6 +95,7 @@ router.get("/:id/quote/new", (req, res) => {
       rfq: context.rfq,
       isEditing: !!existingQuote,
       displayRows,
+      freightRow,
       totals,
       formValues: {
         valid_until: defaultValidUntil,
@@ -108,6 +121,7 @@ router.post("/:id/quote/new", (req, res) => {
   const validUntil = req.body.valid_until;
   const promisedDeliveryDate = req.body.promised_delivery_date || null;
   const sellPriceFormValues = normalizeSellPriceFields(req.body.sell_price);
+  const freightSellRaw = req.body.freight_sell_price;
   const confirmNegativeMargin = req.body.confirm_negative_margin === "on";
 
   const sourcedLineItemCount = context.allLineItems.filter((li) => li.supplier_id != null).length;
@@ -119,27 +133,28 @@ router.post("/:id/quote/new", (req, res) => {
   }
 
   const displayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, sellPriceFormValues);
+  const freightRow = buildFreightLineItem(context.allLineItems, context.lineCosts, freightSellRaw);
+  const allRows = [...displayRows, freightRow];
 
-  displayRows.forEach((row) => {
+  allRows.forEach((row) => {
     if (row.sourced && row.sellUnitPriceUsd == null) {
       errors.push(`Enter a sell price for "${row.description}".`);
     }
   });
 
-  const hasNegativeMargin = displayRows.some(
-    (row) => row.sourced && row.marginUnitUsd != null && row.marginUnitUsd < 0
-  );
+  const hasNegativeMargin = allRows.some((row) => row.sourced && row.marginUnitUsd != null && row.marginUnitUsd < 0);
   if (errors.length === 0 && hasNegativeMargin && !confirmNegativeMargin) {
     errors.push("One or more lines have a negative margin — check the confirmation box below to save anyway.");
   }
 
   if (errors.length > 0) {
-    const totals = buildTotals(displayRows);
+    const totals = buildTotals(allRows);
     return res.status(400).send(
       quoteNewFormPage({
         rfq: context.rfq,
         isEditing: !!existingQuote,
         displayRows,
+        freightRow,
         totals,
         formValues: {
           valid_until: validUntil,
@@ -163,11 +178,12 @@ router.post("/:id/quote/new", (req, res) => {
         targetMarginPct: row.marginPct == null ? 0 : row.marginPct,
       };
     });
+  const freightSellPriceUsd = freightRow.sellUnitPriceUsd;
 
   if (existingQuote) {
-    updateDraftQuote(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, lines });
+    updateDraftQuote(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
   } else {
-    createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, lines });
+    createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
   }
 
   res.redirect(`/rfqs/${context.rfq.id}`);

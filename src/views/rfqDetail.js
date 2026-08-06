@@ -12,14 +12,13 @@ function marginClass(amount) {
   return amount >= 0 ? "text-positive" : "text-negative";
 }
 
-// Shared Buy Price / Freight Cost / Sell Price / Margin cell group — same
-// numbers, same formatting, wherever a line item's cost/margin is shown
-// (Line Items table, Quote section). freightUnitUsd is "—" rather than
-// $0.00 when no freight quote has been selected yet for that vendor's
-// shipment, so "not arranged" never reads as "confirmed free."
+// Shared Buy Price / Sell Price / Margin cell group — same numbers, same
+// formatting, wherever a line item's cost/margin is shown (Line Items
+// table, Quote section). A line item's own margin is buy-vs-sell only —
+// freight is never subtracted here; it's its own aggregated row (see
+// quoteSection's freightRow), shown only on the Quote section.
 function costMarginCells(row) {
   const buyText = row.buyUnitPriceUsd == null ? "—" : formatCurrency(row.buyUnitPriceUsd);
-  const freightText = row.freightUnitUsd == null ? "—" : formatCurrency(row.freightUnitUsd);
   const sellText = row.sellUnitPriceUsd == null ? "—" : formatCurrency(row.sellUnitPriceUsd);
   const marginText =
     row.marginUnitUsd == null
@@ -28,7 +27,6 @@ function costMarginCells(row) {
 
   return `
       <td>${escapeHtml(buyText)}</td>
-      <td>${escapeHtml(freightText)}</td>
       <td>${escapeHtml(sellText)}</td>
       <td class="${marginClass(row.marginUnitUsd)}">${escapeHtml(marginText)}</td>`;
 }
@@ -80,7 +78,7 @@ function lineItemRows(rfqId, lineItems, displayRowsByLineItemId) {
       const row = displayRowsByLineItemId.get(li.id);
       const vendor = row && row.sourced ? row.supplierName : "—";
       const compareLinkText = row && row.sourced ? "Change Vendor" : "Compare Vendors";
-      const costCells = row ? costMarginCells(row) : "<td>—</td><td>—</td><td>—</td><td>—</td>";
+      const costCells = row ? costMarginCells(row) : "<td>—</td><td>—</td><td>—</td>";
 
       return `
     <tr>
@@ -238,7 +236,7 @@ function supplierComparisonSection(rows) {
     </div>`;
 }
 
-function quoteSection(rfq, quote, displayRows, totals, anySourced) {
+function quoteSection(rfq, quote, displayRows, freightRow, totals, anySourced) {
   if (!quote) {
     if (!anySourced) {
       return '<div class="card"><h2>Quote</h2><p>No quote yet — select a vendor for at least one line item first.</p></div>';
@@ -259,7 +257,7 @@ function quoteSection(rfq, quote, displayRows, totals, anySourced) {
       <td>${escapeHtml(row.description)}</td>
       <td>${escapeHtml(row.quantity)}</td>
       <td>${escapeHtml(row.unit)}</td>
-      <td colspan="4" class="text-negative">Not sourced</td>
+      <td colspan="3" class="text-negative">Not sourced</td>
     </tr>`;
       }
       // Only lines actually saved on this quote have a sell price — a
@@ -276,6 +274,20 @@ function quoteSection(rfq, quote, displayRows, totals, anySourced) {
     </tr>`;
     })
     .join("");
+
+  // Same "only shows if actually saved" rule as an item line — a quote
+  // created before the Freight line existed has no freight_sell_price_usd
+  // yet, so nothing renders here for it rather than a misleading blank row.
+  const freightRowHtml =
+    freightRow.sellUnitPriceUsd == null
+      ? ""
+      : `
+    <tr>
+      <td>${escapeHtml(freightRow.description)}</td>
+      <td>${escapeHtml(freightRow.quantity)}</td>
+      <td>${escapeHtml(freightRow.unit)}</td>
+      ${costMarginCells(freightRow)}
+    </tr>`;
 
   const totalsText = totals
     ? `<strong>Total Sell:</strong> ${escapeHtml(formatCurrency(totals.totalSellUsd))} &middot;
@@ -299,9 +311,9 @@ function quoteSection(rfq, quote, displayRows, totals, anySourced) {
       <p>Status: ${escapeHtml(quote.status)} &middot; Created: ${escapeHtml(formatDate(quote.created_date))} &middot; Valid until: ${escapeHtml(formatDate(quote.valid_until))}</p>
       <table>
         <thead>
-          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Freight Cost</th><th>Sell Price</th><th>Margin</th></tr>
+          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Margin</th></tr>
         </thead>
-        <tbody>${quoteRows}</tbody>
+        <tbody>${quoteRows}${freightRowHtml}</tbody>
       </table>
       ${totalsText ? `<p>${totalsText}</p>` : ""}
       <p>${actions}</p>
@@ -313,6 +325,7 @@ function rfqDetailPage({
   lineItems,
   quote,
   displayRows = [],
+  freightRow = null,
   totals = null,
   anySourced = false,
   estimatedArrivalDate = null,
@@ -356,14 +369,14 @@ function rfqDetailPage({
           <tr>
             <th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th>
             <th>Qty</th><th>Unit</th><th>Length</th><th>Vendor</th>
-            <th>Buy Price</th><th>Freight Cost</th><th>Sell Price</th><th>Gross Margin</th><th>Sourcing</th>
+            <th>Buy Price</th><th>Sell Price</th><th>Gross Margin</th><th>Sourcing</th>
           </tr>
         </thead>
         <tbody>${lineItemRows(rfq.id, lineItems, displayRowsByLineItemId)}</tbody>
       </table>
     </div>
 
-    ${quoteSection(rfq, quote, displayRows, totals, anySourced)}
+    ${quoteSection(rfq, quote, displayRows, freightRow, totals, anySourced)}
 
     ${supplierInquiriesSection(rfq.id, supplierInquiries)}
 

@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 16;
+const SCHEMA_VERSION = 17;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -90,7 +90,11 @@ CREATE TABLE IF NOT EXISTS quotes (
   status TEXT NOT NULL,           -- 'Draft', 'Sent', 'Accepted', 'Rejected'
   created_date TEXT NOT NULL,
   valid_until TEXT NOT NULL,
-  promised_delivery_date TEXT     -- the delivery date PM commits to when quoting
+  promised_delivery_date TEXT,    -- the delivery date PM commits to when quoting
+  freight_sell_price_usd REAL     -- the one aggregated Freight line's sell price, editable like any
+                                   -- item's. Freight's buy price is never stored here, same as every
+                                   -- item's buy price — always recalculated live from current sourcing/
+                                   -- freight-selection data (see marginCalc.js/lineItemCostQueries.js).
 );
 
 CREATE TABLE IF NOT EXISTS quote_line_items (
