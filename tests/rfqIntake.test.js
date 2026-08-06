@@ -45,8 +45,8 @@ test("getNextRfqNumber starts at RFQ-1001 when no RFQs exist", () => {
   assert.equal(getNextRfqNumber(db), "RFQ-1001");
 });
 
-test("getNextJobNumber starts at PM-100001 when no RFQs exist", () => {
-  assert.equal(getNextJobNumber(db), "PM-100001");
+test("getNextJobNumber starts at PM-100000 when no RFQs exist", () => {
+  assert.equal(getNextJobNumber(db), "PM-100000");
 });
 
 test("getNextItemNumberSequence starts at 1 when no item numbers exist", () => {
@@ -68,10 +68,10 @@ test("createRfqWithLineItems creates an RFQ for an existing account with generat
   });
 
   assert.equal(result.rfqNumber, "RFQ-1001");
-  assert.equal(result.jobNumber, "PM-100001");
+  assert.equal(result.jobNumber, "PM-100000");
 
   const rfq = db.prepare("SELECT * FROM rfqs WHERE id = ?").get(result.rfqId);
-  assert.equal(rfq.job_number, "PM-100001");
+  assert.equal(rfq.job_number, "PM-100000");
   assert.equal(rfq.account_id, accountId);
   assert.equal(rfq.contact_id, contactId);
   assert.equal(rfq.status, "New");
@@ -113,7 +113,7 @@ test("createRfqWithLineItems creates a new account and contact when accountMode 
 
 test("getNextRfqNumber, getNextJobNumber, and getNextItemNumberSequence continue after prior submissions", () => {
   assert.equal(getNextRfqNumber(db), "RFQ-1003");
-  assert.equal(getNextJobNumber(db), "PM-100003");
+  assert.equal(getNextJobNumber(db), "PM-100002");
   assert.equal(getNextItemNumberSequence(db), 3);
 });
 

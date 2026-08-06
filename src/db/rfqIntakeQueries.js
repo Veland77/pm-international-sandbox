@@ -33,13 +33,18 @@ function getNextRfqNumber(db) {
 // the stable, end-to-end reference for the deal (see schema.js's rfqs
 // comment); rfq_number keeps being generated alongside it as the
 // RFQ record's own internal sub-reference, unchanged.
+//
+// Base is 99999, not 100000, so the very first job_number ever assigned
+// (on a genuinely empty rfqs table) comes out as PM-100000, matching
+// seed.js's own first value — seed.js's counter literally starts at
+// 100000 and is used as-is for RFQ #1, it doesn't add 1 to a prior max.
 function getNextJobNumber(db) {
   const rows = db.prepare("SELECT job_number FROM rfqs").all();
   const maxN = rows.reduce((max, r) => {
     const match = /(\d+)$/.exec(r.job_number);
     const n = match ? parseInt(match[1], 10) : 0;
     return Math.max(max, n);
-  }, 100000);
+  }, 99999);
   return `PM-${maxN + 1}`;
 }
 
