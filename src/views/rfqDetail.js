@@ -2,7 +2,7 @@
 // Renders a single RFQ's detail page: account/contact, line items, and linked quote if any.
 
 const { layout } = require("./layout");
-const { escapeHtml, formatDate, formatCurrency } = require("./htmlHelpers");
+const { escapeHtml, formatDate, formatCurrency, formatNumber } = require("./htmlHelpers");
 const { rfqAttachmentsSection } = require("./rfqAttachmentsSection");
 const { supplierInquiryAttachmentsSection } = require("./supplierInquiryAttachmentsSection");
 const { compactMilestoneTimeline } = require("./milestoneTimeline");
@@ -31,7 +31,28 @@ function costMarginCells(row) {
       <td class="${marginClass(row.marginUnitUsd)}">${escapeHtml(marginText)}</td>`;
 }
 
-function orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate) {
+// "700 kg — 120 x 15 x 15 cm per unit (2 of 3 line items — 1 not yet
+// sourced)" — dimensions only included when every sourced line agrees on
+// box size (see shipmentSizeCalc.js), the partial-sourcing note only
+// when some line items still have no vendor selected. A slot for an
+// "Actual Shipment Size" stat can sit right next to this once final
+// weight/dimensions capture exists (see docs/phase4-sourcing-lifecycle.md)
+// — not built yet, this is the estimate side only.
+function formatShipmentSize(estimate) {
+  if (!estimate) return "—";
+
+  let text = `${formatNumber(estimate.totalWeightKg, 1)} kg`;
+  if (estimate.dimensionsText) {
+    text += ` — ${estimate.dimensionsText} per unit`;
+  }
+  if (estimate.sourcedCount < estimate.totalCount) {
+    const missing = estimate.totalCount - estimate.sourcedCount;
+    text += ` (${estimate.sourcedCount} of ${estimate.totalCount} line items — ${missing} not yet sourced)`;
+  }
+  return text;
+}
+
+function orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate, shipmentSizeEstimate) {
   const grossProfitUsd = totals ? totals.marginUsd : null;
   const grossProfitPct = totals ? totals.marginPct : null;
   const totalOrderValueUsd = totals ? totals.totalSellUsd : null;
@@ -64,6 +85,10 @@ function orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate) {
         <div>
           <div class="stat-label">Estimated Vendor Arrival</div>
           <div class="stat-value-small">${escapeHtml(formatDate(estimatedArrivalDate))}</div>
+        </div>
+        <div>
+          <div class="stat-label">Estimated Shipment Size (preliminary, based on vendor quotes)</div>
+          <div class="stat-value-small">${escapeHtml(formatShipmentSize(shipmentSizeEstimate))}</div>
         </div>
       </div>
     </div>`;
@@ -353,6 +378,7 @@ function rfqDetailPage({
   totals = null,
   anySourced = false,
   estimatedArrivalDate = null,
+  shipmentSizeEstimate = null,
   supplierComparison = [],
   rfqAttachments = [],
   supplierInquiries = [],
@@ -369,7 +395,7 @@ function rfqDetailPage({
     <h1>${escapeHtml(rfq.rfq_number)} — ${escapeHtml(rfq.project_name)}</h1>
     <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(formatDate(rfq.created_date))} &middot; Due: ${escapeHtml(formatDate(rfq.due_date))}</p>
 
-    ${orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate)}
+    ${orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate, shipmentSizeEstimate)}
 
     ${orderSection(rfq, order, shipments)}
 

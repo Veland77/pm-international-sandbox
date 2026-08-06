@@ -16,6 +16,7 @@ const {
 } = require("../db/rfqQueries");
 const { estimateArrivalDate, toUsd } = require("../db/orderSummary");
 const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
+const { buildShipmentSizeEstimate } = require("../db/shipmentSizeCalc");
 const { buildLineItemDisplayRows, buildTotals, buildFreightLineItem, buildLandedLineItemRows } = require("../db/marginCalc");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
@@ -61,6 +62,7 @@ router.get("/:id", (req, res) => {
   const freightRow = buildFreightLineItem(allLineItems, lineCosts, freightSellRaw);
   const totals = buildTotals([...displayRows, freightRow]);
   const estimatedArrivalDate = estimateArrivalDate(allLineItems);
+  const shipmentSizeEstimate = buildShipmentSizeEstimate(allLineItems);
   const displayRowsByLineItemId = new Map(displayRows.map((row) => [row.rfqLineItemId, row]));
 
   // View-only toggle for the Quote section specifically (never the Line
@@ -125,6 +127,7 @@ router.get("/:id", (req, res) => {
       totals,
       anySourced,
       estimatedArrivalDate,
+      shipmentSizeEstimate,
       supplierComparison,
       rfqAttachments,
       supplierInquiries,

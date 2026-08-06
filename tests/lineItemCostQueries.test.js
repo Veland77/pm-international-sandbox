@@ -139,6 +139,7 @@ test("getRfqLineItemsWithSourcing returns every line item with its selected vend
   assert.equal(rows.length, 3);
   assert.ok(rows.every((r) => r.supplier_id === vendorId));
   assert.equal(rows.find((r) => r.rfq_line_item_id === lineAId).weight_kg, 10);
+  assert.equal(rows.find((r) => r.rfq_line_item_id === lineAId).dimensions, "10 x 10 x 10 cm");
 });
 
 test("getFreightCoverageForRfq only returns the lines the selected quote's own freight_inquiry actually covers", () => {

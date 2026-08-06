@@ -12,16 +12,19 @@ const { toSourcedLineItems, buildLineCosts } = require("./marginCalc");
 // Every line item on the RFQ, sourced or not — supplier_id/supplier_name
 // are null for a line with no Selected vendor yet, which is how every
 // margin display tells sourced apart from unsourced. weight_kg,
-// lead_time_days, received_date, estimated_transit_days all come from the
-// selected vendor's own quote line, same source the Freight Inquiry and
-// Expediting screens already use. supplier_quote_line_item_id identifies
-// exactly which vendor-quote-line was selected, so Supplier Comparison
-// rows can be matched against it precisely.
+// dimensions, lead_time_days, received_date, estimated_transit_days all
+// come from the selected vendor's own quote line, same source the Freight
+// Inquiry and Expediting screens already use — dimensions is a vendor-
+// supplied free-text box size (e.g. "120 x 15 x 15 cm"), not structured
+// numeric fields, so it's only ever displayed as-is, never computed with.
+// supplier_quote_line_item_id identifies exactly which vendor-quote-line
+// was selected, so Supplier Comparison rows can be matched against it
+// precisely.
 const RFQ_LINE_ITEMS_WITH_SOURCING_QUERY = `
   SELECT li.id AS rfq_line_item_id, li.description, li.quantity, li.unit,
          s.id AS supplier_id, s.name AS supplier_name,
          sqli.id AS supplier_quote_line_item_id,
-         sqli.unit_price, sqli.currency, sqli.weight_kg, sqli.lead_time_days,
+         sqli.unit_price, sqli.currency, sqli.weight_kg, sqli.dimensions, sqli.lead_time_days,
          sq.received_date, sq.estimated_transit_days
   FROM rfq_line_items li
   LEFT JOIN line_item_sourcing lis ON lis.rfq_line_item_id = li.id AND lis.status = 'Selected'
