@@ -30,6 +30,7 @@ app.use("/rfqs", require("./routes/rfqIntake"));
 app.use("/rfqs", require("./routes/rfqAttachments")); // customer attachments only — see src/db/schema.js
 app.use("/rfqs", require("./routes/inquiryIntake"));
 app.use("/rfqs", require("./routes/freightIntake"));
+app.use("/rfqs", require("./routes/lineItemSourcing"));
 // orderIntake must be mounted before rfqs: both live at /rfqs, and rfqs.js's
 // GET /:id would otherwise swallow GET /rfqs/:id/convert-to-order.
 app.use("/rfqs", require("./routes/orderIntake"));

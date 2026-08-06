@@ -48,7 +48,7 @@ function orderSummaryBlock(rfq, quote, orderSummary) {
     </div>`;
 }
 
-function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
+function lineItemRows(rfqId, lineItems, sourcingRows, lineItemMargins) {
   const vendorByLineItemId = new Map(sourcingRows.map((r) => [r.rfq_line_item_id, r.supplier_name]));
 
   return lineItems
@@ -63,6 +63,7 @@ function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
       const marginText = margin
         ? `${formatCurrency(margin.marginUnitUsd)} (${margin.marginPct === null ? "—" : `${margin.marginPct.toFixed(1)}%`})`
         : "—";
+      const compareLinkText = vendorByLineItemId.has(li.id) ? "Change Vendor" : "Compare Vendors";
       return `
     <tr>
       <td>${escapeHtml(li.item_number || "—")}${notConverted ? " (Not Converted)" : ""}</td>
@@ -77,6 +78,7 @@ function lineItemRows(lineItems, sourcingRows, lineItemMargins) {
       <td>${escapeHtml(buyPriceText)}</td>
       <td>${escapeHtml(sellPriceText)}</td>
       <td class="${margin ? marginClass(margin.marginUnitUsd) : ""}">${escapeHtml(marginText)}</td>
+      <td><a href="/rfqs/${rfqId}/line-items/${li.id}/compare">${compareLinkText}</a></td>
     </tr>`;
     })
     .join("");
@@ -281,10 +283,10 @@ function rfqDetailPage({
           <tr>
             <th>Item #</th><th>Material</th><th>Product Form</th><th>Standard</th><th>Description</th>
             <th>Qty</th><th>Unit</th><th>Length</th><th>Vendor</th>
-            <th>Buy Price</th><th>Sell Price</th><th>Gross Margin</th>
+            <th>Buy Price</th><th>Sell Price</th><th>Gross Margin</th><th>Sourcing</th>
           </tr>
         </thead>
-        <tbody>${lineItemRows(lineItems, sourcingRows, lineItemMargins)}</tbody>
+        <tbody>${lineItemRows(rfq.id, lineItems, sourcingRows, lineItemMargins)}</tbody>
       </table>
     </div>
 

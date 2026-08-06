@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 13;
+const SCHEMA_VERSION = 14;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -169,7 +169,8 @@ CREATE TABLE IF NOT EXISTS supplier_quote_line_items (
   weight_kg REAL NOT NULL,
   dimensions TEXT NOT NULL,
   crating_cost REAL NOT NULL,
-  lead_time_days INTEGER NOT NULL
+  lead_time_days INTEGER NOT NULL,
+  notes TEXT                       -- free text from the vendor's quote response, nullable
 );
 
 CREATE TABLE IF NOT EXISTS customer_quote_options (

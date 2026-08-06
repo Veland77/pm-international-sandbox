@@ -20,8 +20,8 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates
   `);
   const insertSupplierQuoteLine = db.prepare(`
     INSERT INTO supplier_quote_line_items
-      (supplier_quote_id, rfq_line_item_id, unit_price, currency, weight_kg, dimensions, crating_cost, lead_time_days)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (supplier_quote_id, rfq_line_item_id, unit_price, currency, weight_kg, dimensions, crating_cost, lead_time_days, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertQuoteOption = db.prepare(`
     INSERT INTO customer_quote_options (quote_id, option_label, supplier_quote_id, notes)
@@ -76,7 +76,8 @@ function seedSuppliersForRfq(db, supplierIds, { rfqId, lineItems, quoteId, dates
         20 + j * 5,
         "120 x 15 x 15 cm",
         45 + j * 10,
-        entry.leadTimeDays
+        entry.leadTimeDays,
+        (entry.notes && entry.notes[j]) || null
       ).lastInsertRowid;
       quoteLineItemIdByKey.set(`${entry.supplierIndex}:${li.id}`, supplierQuoteLineItemId);
     });

@@ -51,7 +51,20 @@ const SUPPLIERS = [
 const SUPPLIER_SCENARIOS_BY_RFQ_INDEX = {
   1: [
     { supplierIndex: 0, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 35, unitPrices: [550, 780, 1300], currency: "CNY", estimatedTransitDays: 30 },
-    { supplierIndex: 3, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 12, unitPrices: [76, 105, 128], currency: "EUR", estimatedTransitDays: 7 },
+    {
+      supplierIndex: 3,
+      outreachStatus: "Quoted",
+      availability: "In Stock",
+      leadTimeDays: 12,
+      unitPrices: [76, 105, 128],
+      currency: "EUR",
+      estimatedTransitDays: 7,
+      notes: [
+        "Ex-works packaging included",
+        "Mill certs available on request",
+        "Priority slot — can expedite for +5% surcharge",
+      ],
+    },
     { supplierIndex: 2, outreachStatus: "Declined" },
   ],
   2: [
@@ -61,7 +74,20 @@ const SUPPLIER_SCENARIOS_BY_RFQ_INDEX = {
   ],
   3: [
     { supplierIndex: 3, outreachStatus: "Quoted", availability: "In Stock", leadTimeDays: 15, unitPrices: [115, 150, 188], currency: "EUR", estimatedTransitDays: 7 },
-    { supplierIndex: 1, outreachStatus: "Quoted", availability: "Make to Order", leadTimeDays: 28, unitPrices: [95, 130, 165], currency: "EUR", estimatedTransitDays: 7 },
+    {
+      supplierIndex: 1,
+      outreachStatus: "Quoted",
+      availability: "Make to Order",
+      leadTimeDays: 28,
+      unitPrices: [95, 130, 165],
+      currency: "EUR",
+      estimatedTransitDays: 7,
+      notes: [
+        "Make-to-order — 28 day lead confirmed with mill",
+        "Same production batch as line 1",
+        "Standard crating",
+      ],
+    },
     { supplierIndex: 0, outreachStatus: "Declined" },
   ],
 };
