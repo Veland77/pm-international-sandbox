@@ -1,6 +1,8 @@
 // tests/quoteIntake.test.js
-// Exercises the Offer to Customer quote create/edit/mark-sent logic
-// against a scratch SQLite database, never the real seed data.
+// Exercises the Offer to Customer quote create/edit/mark-sent CRUD
+// against a scratch SQLite database, never the real seed data. Reads
+// (line items, sourcing, freight-allocated costs) are covered separately
+// in tests/lineItemCostQueries.test.js.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -13,14 +15,7 @@ process.env.DATABASE_PATH = scratchDbPath;
 
 const { getDb } = require("../src/db/connection");
 const { SCHEMA } = require("../src/db/schema");
-const {
-  getRfqLineItemsWithSourcing,
-  getLandedPricesForRfq,
-  getNextQuoteNumber,
-  createQuote,
-  updateDraftQuote,
-  markQuoteAsSent,
-} = require("../src/db/quoteBuildQueries");
+const { getNextQuoteNumber, createQuote, updateDraftQuote, markQuoteAsSent } = require("../src/db/quoteBuildQueries");
 
 const db = getDb();
 db.exec(SCHEMA);
@@ -54,13 +49,6 @@ const sourcedLineId = db
   )
   .run(rfqId, materialId, productFormId, '4" Ball Valve', 10, "EA").lastInsertRowid;
 
-// Deliberately left unsourced to confirm it's excluded/flagged.
-const unsourcedLineId = db
-  .prepare(
-    "INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, description, quantity, unit) VALUES (?, ?, ?, ?, ?, ?)"
-  )
-  .run(rfqId, materialId, productFormId, '6" Ball Valve', 5, "EA").lastInsertRowid;
-
 const vendorId = db
   .prepare("INSERT INTO suppliers (name, country, region, specialty) VALUES (?, ?, ?, ?)")
   .run("Test Vendor", "Italy", "Europe", "Valves").lastInsertRowid;
@@ -89,51 +77,6 @@ const supplierQuoteLineId = db
 db.prepare(
   "INSERT INTO line_item_sourcing (rfq_line_item_id, supplier_quote_line_item_id, selected_date, status) VALUES (?, ?, ?, 'Selected')"
 ).run(sourcedLineId, supplierQuoteLineId, "2026-01-04");
-
-const forwarderId = db
-  .prepare("INSERT INTO freight_forwarders (name, country, region, specialty) VALUES (?, ?, ?, ?)")
-  .run("Test Forwarder", "Italy", "Europe", "Ocean freight").lastInsertRowid;
-
-const freightInquiryId = db
-  .prepare(
-    "INSERT INTO freight_inquiries (frq_number, rfq_id, freight_forwarder_id, sent_date, status) VALUES (?, ?, ?, ?, ?)"
-  )
-  .run("FRQ-TEST-1", rfqId, forwarderId, "2026-01-05", "Quoted").lastInsertRowid;
-db.prepare("INSERT INTO freight_inquiry_line_items (freight_inquiry_id, rfq_line_item_id) VALUES (?, ?)").run(
-  freightInquiryId,
-  sourcedLineId
-);
-
-const freightQuoteId = db
-  .prepare(
-    `INSERT INTO freight_quotes (freight_inquiry_id, quote_ref, received_date, price, currency, transit_days, valid_until)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`
-  )
-  .run(freightInquiryId, "FQ-1", "2026-01-06", 200, "USD", 18, "2026-06-01").lastInsertRowid;
-
-db.prepare(
-  "INSERT INTO freight_quote_selection (rfq_id, supplier_id, freight_quote_id, selected_date, status) VALUES (?, ?, ?, ?, 'Selected')"
-).run(rfqId, vendorId, freightQuoteId, "2026-01-07");
-
-test("getRfqLineItemsWithSourcing distinguishes sourced from unsourced lines", () => {
-  const rows = getRfqLineItemsWithSourcing(db, rfqId);
-  assert.equal(rows.length, 2);
-  const sourced = rows.find((r) => r.rfq_line_item_id === sourcedLineId);
-  assert.equal(sourced.supplier_id, vendorId);
-  assert.equal(sourced.weight_kg, 20);
-  assert.equal(sourced.lead_time_days, 12);
-
-  const unsourced = rows.find((r) => r.rfq_line_item_id === unsourcedLineId);
-  assert.equal(unsourced.supplier_id, null);
-});
-
-test("getLandedPricesForRfq includes buy price plus allocated freight (single line gets the whole quote)", () => {
-  const { landedPrices } = getLandedPricesForRfq(db, rfqId);
-  const landed = landedPrices.get(sourcedLineId);
-  assert.equal(landed.buyUnitPriceUsd, 80);
-  assert.equal(landed.freightPerUnitUsd, 200 / 10); // $200 quote / 10 units, single line on this vendor
-  assert.equal(landed.landedUnitPriceUsd, 80 + 200 / 10);
-});
 
 test("getNextQuoteNumber starts after 5000 when no quotes exist", () => {
   assert.equal(getNextQuoteNumber(db), "Q-5001");

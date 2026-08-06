@@ -1,17 +1,15 @@
 // src/db/orderSummary.js
-// Computes the RFQ detail page's order-value/gross-profit/delivery-date
-// numbers from already-fetched rows. Pure logic, no database access, so
-// it's testable on its own.
+// Currency conversion and delivery-date estimation helpers shared across
+// the app. Margin/cost calculations (buy price, freight, sell price,
+// margin) live in marginCalc.js — this file used to also compute a
+// freight-exclusive margin (buildLineItemMargins/buildOrderSummary),
+// removed once the RFQ page moved to one shared margin calculation
+// everywhere instead of two different numbers for the same line item.
 
 // A currency-conversion spread applied only when converting a vendor's
 // foreign-currency cost to USD — reflects the real cost of actually
 // converting money, not just the raw market rate. Never applied to USD.
 const FX_MARGIN_PCT = 0.5;
-
-// rates: rows from the currency_rates table ({ currency_code, rate_to_usd }).
-function ratesByCode(rates) {
-  return new Map(rates.map((r) => [r.currency_code, r.rate_to_usd]));
-}
 
 function toUsd(amount, currencyCode, rateMap) {
   if (currencyCode === "USD") return amount;
@@ -26,75 +24,24 @@ function addDays(dateStr, days) {
   return d.toISOString().slice(0, 10);
 }
 
-// Per-line buy price (selected vendor's cost, converted to USD), sell price
-// (customer unit price), and margin. Lines with no selected vendor, or a
-// vendor quoted in a currency we don't have a rate for, are left out —
-// callers should treat a missing entry as "no margin to show yet".
-//
-// quoteLineItems: rows from QUOTE_LINE_ITEMS_QUERY (rfq_line_item_id, quantity, unit_price_usd, ...)
-// sourcingRows: rows from getLineItemSourcing (rfq_line_item_id, unit_price, currency, lead_time_days, received_date, estimated_transit_days)
-// rates: rows from getCurrencyRates
-function buildLineItemMargins({ quoteLineItems, sourcingRows, rates }) {
-  const rateMap = ratesByCode(rates);
-  const sourcingByLineItemId = new Map(sourcingRows.map((r) => [r.rfq_line_item_id, r]));
-  const marginsByLineItemId = new Map();
-
-  quoteLineItems.forEach((qli) => {
-    const sourcing = sourcingByLineItemId.get(qli.rfq_line_item_id);
-    if (!sourcing) return;
-
-    const buyUnitPriceUsd = toUsd(sourcing.unit_price, sourcing.currency, rateMap);
-    if (buyUnitPriceUsd === null) return;
-
-    const sellUnitPriceUsd = qli.unit_price_usd;
-    const marginUnitUsd = sellUnitPriceUsd - buyUnitPriceUsd;
-    const marginPct = sellUnitPriceUsd > 0 ? (marginUnitUsd / sellUnitPriceUsd) * 100 : null;
-
-    marginsByLineItemId.set(qli.rfq_line_item_id, {
-      quantity: qli.quantity,
-      buyUnitPriceUsd,
-      sellUnitPriceUsd,
-      marginUnitUsd,
-      marginPct,
-      sourcing,
-    });
-  });
-
-  return marginsByLineItemId;
-}
-
-function buildOrderSummary({ quoteLineItems, sourcingRows, rates }) {
-  const margins = buildLineItemMargins({ quoteLineItems, sourcingRows, rates });
-
-  let totalOrderValueUsd = 0;
-  let totalCostUsd = 0;
+// Latest estimated arrival across every sourced line — the order isn't
+// complete until the last item lands.
+// allLineItems: rows from getRfqLineItemsWithSourcing (received_date/
+// estimated_transit_days/lead_time_days come from the selected vendor's
+// own quote; null for a line with no selected vendor yet).
+function estimateArrivalDate(allLineItems) {
   let estimatedArrivalDate = null;
 
-  quoteLineItems.forEach((qli) => {
-    totalOrderValueUsd += qli.unit_price_usd * qli.quantity;
-
-    const margin = margins.get(qli.rfq_line_item_id);
-    if (!margin) return;
-
-    totalCostUsd += margin.buyUnitPriceUsd * qli.quantity;
-
-    const fcaReadyDate = addDays(margin.sourcing.received_date, margin.sourcing.lead_time_days);
-    const arrivalDate = addDays(fcaReadyDate, margin.sourcing.estimated_transit_days);
+  allLineItems.forEach((li) => {
+    if (li.supplier_id == null || !li.received_date) return;
+    const fcaReadyDate = addDays(li.received_date, li.lead_time_days);
+    const arrivalDate = addDays(fcaReadyDate, li.estimated_transit_days);
     if (!estimatedArrivalDate || arrivalDate > estimatedArrivalDate) {
       estimatedArrivalDate = arrivalDate;
     }
   });
 
-  const grossProfitUsd = totalOrderValueUsd - totalCostUsd;
-  const grossProfitPct = totalOrderValueUsd > 0 ? (grossProfitUsd / totalOrderValueUsd) * 100 : null;
-
-  return {
-    totalOrderValueUsd,
-    totalCostUsd,
-    grossProfitUsd,
-    grossProfitPct,
-    estimatedArrivalDate,
-  };
+  return estimatedArrivalDate;
 }
 
-module.exports = { buildOrderSummary, buildLineItemMargins, toUsd, addDays, FX_MARGIN_PCT };
+module.exports = { toUsd, addDays, estimateArrivalDate, FX_MARGIN_PCT };

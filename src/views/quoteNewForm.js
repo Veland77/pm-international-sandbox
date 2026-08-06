@@ -1,8 +1,9 @@
 // src/views/quoteNewForm.js
-// "Offer to Customer" quote create/edit form: buy price (vendor cost +
-// allocated freight) and sell price per sourced line item, margin $/%
-// computed both server-side (authoritative) and live client-side as sell
-// prices are typed. Unsourced lines are shown but flagged, not quotable.
+// "Offer to Customer" quote create/edit form: buy price, freight cost
+// (allocated by weight share, shown as its own column, never folded into
+// buy price), and sell price per sourced line item, margin $/% computed
+// both server-side (authoritative) and live client-side as sell prices
+// are typed. Unsourced lines are shown but flagged, not quotable.
 // Receives fully-computed displayRows/totals from the route — no calc
 // imports here, same separation the rest of the app's views use.
 
@@ -39,21 +40,23 @@ function lineRows(displayRows) {
       <td>${escapeHtml(row.description)}</td>
       <td>${escapeHtml(row.quantity)}</td>
       <td>${escapeHtml(row.unit)}</td>
-      <td colspan="5" class="text-negative">Not sourced — select a vendor first</td>
+      <td colspan="6" class="text-negative">Not sourced — select a vendor first</td>
     </tr>`;
       }
 
       const buyText = row.buyUnitPriceUsd == null ? "—" : formatCurrency(row.buyUnitPriceUsd);
+      const freightText = row.freightUnitUsd == null ? "—" : formatCurrency(row.freightUnitUsd);
       const marginUsdText = row.marginUnitUsd == null ? "—" : formatCurrency(row.marginUnitUsd);
       const marginPctText = row.marginPct == null ? "—" : `${row.marginPct.toFixed(1)}%`;
 
       return `
-    <tr class="quote-line-row" data-buy="${row.buyUnitPriceUsd ?? ""}" data-quantity="${row.quantity}">
+    <tr class="quote-line-row" data-buy="${row.buyUnitPriceUsd ?? ""}" data-freight="${row.freightUnitUsd ?? 0}" data-quantity="${row.quantity}">
       <td>${escapeHtml(row.description)}</td>
       <td>${escapeHtml(row.quantity)}</td>
       <td>${escapeHtml(row.unit)}</td>
       <td>${escapeHtml(row.supplierName)}</td>
       <td>${escapeHtml(buyText)}</td>
+      <td>${escapeHtml(freightText)}</td>
       <td><input type="number" step="0.01" min="0.01" class="quote-sell-price" name="sell_price[${row.rfqLineItemId}]" value="${escapeHtml(row.sellPriceRaw || "")}" required></td>
       <td class="quote-margin-usd ${marginClass(row.marginUnitUsd)}">${escapeHtml(marginUsdText)}</td>
       <td class="quote-margin-pct ${marginClass(row.marginUnitUsd)}">${escapeHtml(marginPctText)}</td>
@@ -90,7 +93,7 @@ function quoteNewFormPage({ rfq, isEditing, displayRows, totals, formValues = {}
         <h2>Line Items</h2>
         <table>
           <thead>
-            <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Vendor</th><th>Buy Price</th><th>Sell Price</th><th>Margin $</th><th>Margin %</th></tr>
+            <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Vendor</th><th>Buy Price</th><th>Freight Cost</th><th>Sell Price</th><th>Margin $</th><th>Margin %</th></tr>
           </thead>
           <tbody>${lineRows(displayRows)}</tbody>
         </table>
@@ -104,8 +107,12 @@ function quoteNewFormPage({ rfq, isEditing, displayRows, totals, formValues = {}
             <div class="stat-value" id="quote-total-sell">${totals ? escapeHtml(formatCurrency(totals.totalSellUsd)) : "—"}</div>
           </div>
           <div>
-            <div class="stat-label">Total Buy (incl. freight)</div>
+            <div class="stat-label">Total Buy</div>
             <div class="stat-value" id="quote-total-buy">${totals ? escapeHtml(formatCurrency(totals.totalBuyUsd)) : "—"}</div>
+          </div>
+          <div>
+            <div class="stat-label">Total Freight</div>
+            <div class="stat-value" id="quote-total-freight">${totals ? escapeHtml(formatCurrency(totals.totalFreightUsd)) : "—"}</div>
           </div>
           <div>
             <div class="stat-label">Total Margin</div>

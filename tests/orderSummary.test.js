@@ -1,16 +1,18 @@
 // tests/orderSummary.test.js
-// Pure unit tests for the order-summary calculation — no database involved.
+// Pure unit tests for currency conversion and delivery-date estimation —
+// no database involved. Margin/cost calculations moved to marginCalc.js
+// (see tests/marginCalc.test.js) once the RFQ page unified on one shared
+// margin calculation instead of a separate freight-exclusive one here.
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { buildOrderSummary, buildLineItemMargins, toUsd, addDays, FX_MARGIN_PCT } = require("../src/db/orderSummary");
+const { toUsd, addDays, estimateArrivalDate, FX_MARGIN_PCT } = require("../src/db/orderSummary");
 
-const TEST_RATES = [
-  { currency_code: "USD", rate_to_usd: 1 },
-  { currency_code: "EUR", rate_to_usd: 1.08 },
-  { currency_code: "CNY", rate_to_usd: 0.139 },
-];
-const RATE_MAP = new Map(TEST_RATES.map((r) => [r.currency_code, r.rate_to_usd]));
+const RATE_MAP = new Map([
+  ["USD", 1],
+  ["EUR", 1.08],
+  ["CNY", 0.139],
+]);
 
 test("toUsd passes USD through unchanged with no FX margin applied", () => {
   assert.equal(toUsd(100, "USD", RATE_MAP), 100);
@@ -30,141 +32,34 @@ test("addDays advances a YYYY-MM-DD string correctly", () => {
   assert.equal(addDays("2026-01-25", 10), "2026-02-04");
 });
 
-test("buildLineItemMargins computes buy/sell/margin per line and skips unsourced lines", () => {
-  const quoteLineItems = [
-    { rfq_line_item_id: 1, quantity: 10, unit_price_usd: 100 },
-    { rfq_line_item_id: 2, quantity: 5, unit_price_usd: 50 },
-  ];
-  const sourcingRows = [
+test("estimateArrivalDate takes the latest arrival across every sourced line", () => {
+  const allLineItems = [
     {
       rfq_line_item_id: 1,
-      unit_price: 80,
-      currency: "USD",
-      lead_time_days: 10,
+      supplier_id: 5,
       received_date: "2026-01-01",
-      estimated_transit_days: 5,
-    },
-    // line 2 has no sourcing row — no vendor selected yet
-  ];
-
-  const margins = buildLineItemMargins({ quoteLineItems, sourcingRows, rates: TEST_RATES });
-
-  assert.equal(margins.size, 1);
-  const line1 = margins.get(1);
-  assert.equal(line1.buyUnitPriceUsd, 80);
-  assert.equal(line1.sellUnitPriceUsd, 100);
-  assert.equal(line1.marginUnitUsd, 20);
-  assert.equal(line1.marginPct, 20);
-  assert.equal(margins.has(2), false);
-});
-
-test("buildLineItemMargins can produce a negative margin — real signal, not suppressed", () => {
-  const margins = buildLineItemMargins({
-    quoteLineItems: [{ rfq_line_item_id: 1, quantity: 1, unit_price_usd: 100 }],
-    sourcingRows: [
-      {
-        rfq_line_item_id: 1,
-        unit_price: 150,
-        currency: "EUR",
-        lead_time_days: 10,
-        received_date: "2026-01-01",
-        estimated_transit_days: 5,
-      },
-    ],
-    rates: TEST_RATES,
-  });
-
-  const line1 = margins.get(1);
-  assert.ok(line1.buyUnitPriceUsd > 100);
-  assert.ok(line1.marginUnitUsd < 0);
-  assert.ok(line1.marginPct < 0);
-});
-
-test("buildOrderSummary computes order value, profit, and single-vendor arrival date", () => {
-  const quoteLineItems = [
-    { rfq_line_item_id: 1, quantity: 10, unit_price_usd: 100 },
-    { rfq_line_item_id: 2, quantity: 5, unit_price_usd: 200 },
-  ];
-  const sourcingRows = [
-    {
-      rfq_line_item_id: 1,
-      unit_price: 50,
-      currency: "USD",
       lead_time_days: 10,
-      received_date: "2026-01-01",
       estimated_transit_days: 5,
     },
     {
       rfq_line_item_id: 2,
-      unit_price: 100,
-      currency: "USD",
+      supplier_id: 5,
+      received_date: "2026-01-01",
       lead_time_days: 20,
-      received_date: "2026-01-01",
       estimated_transit_days: 5,
     },
   ];
-
-  const summary = buildOrderSummary({ quoteLineItems, sourcingRows, rates: TEST_RATES });
-
-  assert.equal(summary.totalOrderValueUsd, 10 * 100 + 5 * 200);
-  assert.equal(summary.totalCostUsd, 10 * 50 + 5 * 100);
-  assert.equal(summary.grossProfitUsd, summary.totalOrderValueUsd - summary.totalCostUsd);
-  assert.equal(
-    Math.round(summary.grossProfitPct * 100) / 100,
-    Math.round((summary.grossProfitUsd / summary.totalOrderValueUsd) * 10000) / 100
-  );
   // Line 2 has the longer lead time (20 days vs 10), so its arrival date should win.
-  assert.equal(summary.estimatedArrivalDate, addDays("2026-01-01", 20 + 5));
+  assert.equal(estimateArrivalDate(allLineItems), addDays("2026-01-01", 20 + 5));
 });
 
-test("buildOrderSummary rolls up a negative per-line margin into a negative total — real signal, not suppressed", () => {
-  // Mirrors the seeded Gulfstream scenario: a selected vendor whose
-  // converted cost exceeds the customer's sell price on every line.
-  const quoteLineItems = [
-    { rfq_line_item_id: 1, quantity: 10, unit_price_usd: 100 },
-    { rfq_line_item_id: 2, quantity: 20, unit_price_usd: 137.5 },
+test("estimateArrivalDate skips unsourced lines", () => {
+  const allLineItems = [
+    { rfq_line_item_id: 1, supplier_id: null, received_date: null, lead_time_days: null, estimated_transit_days: null },
   ];
-  const sourcingRows = [
-    {
-      rfq_line_item_id: 1,
-      unit_price: 115,
-      currency: "EUR",
-      lead_time_days: 15,
-      received_date: "2026-01-01",
-      estimated_transit_days: 7,
-    },
-    {
-      rfq_line_item_id: 2,
-      unit_price: 150,
-      currency: "EUR",
-      lead_time_days: 15,
-      received_date: "2026-01-01",
-      estimated_transit_days: 7,
-    },
-  ];
-
-  const summary = buildOrderSummary({ quoteLineItems, sourcingRows, rates: TEST_RATES });
-
-  assert.equal(summary.totalOrderValueUsd, 10 * 100 + 20 * 137.5);
-  assert.ok(summary.totalCostUsd > summary.totalOrderValueUsd);
-  assert.ok(summary.grossProfitUsd < 0);
-  assert.ok(summary.grossProfitPct < 0);
+  assert.equal(estimateArrivalDate(allLineItems), null);
 });
 
-test("buildOrderSummary skips lines with no sourcing selection", () => {
-  const summary = buildOrderSummary({
-    quoteLineItems: [{ rfq_line_item_id: 1, quantity: 1, unit_price_usd: 50 }],
-    sourcingRows: [],
-    rates: TEST_RATES,
-  });
-
-  assert.equal(summary.totalOrderValueUsd, 50);
-  assert.equal(summary.totalCostUsd, 0);
-  assert.equal(summary.estimatedArrivalDate, null);
-});
-
-test("buildOrderSummary returns null profit percent when order value is zero", () => {
-  const summary = buildOrderSummary({ quoteLineItems: [], sourcingRows: [], rates: TEST_RATES });
-  assert.equal(summary.totalOrderValueUsd, 0);
-  assert.equal(summary.grossProfitPct, null);
+test("estimateArrivalDate returns null when nothing is sourced", () => {
+  assert.equal(estimateArrivalDate([]), null);
 });

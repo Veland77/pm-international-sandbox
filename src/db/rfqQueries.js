@@ -35,25 +35,18 @@ const LINE_ITEMS_QUERY = `
   WHERE li.rfq_id = ?
 `;
 
-const LINE_ITEM_SOURCING_QUERY = `
-  SELECT lis.rfq_line_item_id, lis.status AS sourcing_status,
-         supplr.name AS supplier_name,
-         sq.received_date, sq.estimated_transit_days,
-         sqli.unit_price, sqli.currency, sqli.lead_time_days
-  FROM line_item_sourcing lis
-  JOIN rfq_line_items li ON li.id = lis.rfq_line_item_id
-  JOIN supplier_quote_line_items sqli ON sqli.id = lis.supplier_quote_line_item_id
-  JOIN supplier_quotes sq ON sq.id = sqli.supplier_quote_id
-  JOIN supplier_inquiries si ON si.id = sq.supplier_inquiry_id
-  JOIN suppliers supplr ON supplr.id = si.supplier_id
-  WHERE li.rfq_id = ? AND lis.status = 'Selected'
-`;
-
+// rfq_line_item_id/supplier_quote_line_item_id let the RFQ page match each
+// comparison row against the per-line freight allocation computed in
+// lineItemCostQueries.js/marginCalc.js — a row only ever gets a freight
+// cost when it's the exact vendor-quote-line actually selected for that
+// line (every other, non-winning vendor's row structurally never has a
+// freight quote against it).
 const SUPPLIER_COMPARISON_QUERY = `
   SELECT si.id AS supplier_inquiry_id, si.inquiry_number, s.name AS supplier_name, s.country AS supplier_country,
          si.status AS outreach_status,
          sq.quote_ref, sq.availability, sq.valid_until,
-         li.description AS line_item_description,
+         li.id AS rfq_line_item_id, li.description AS line_item_description,
+         sqli.id AS supplier_quote_line_item_id,
          sqli.unit_price, sqli.currency, sqli.weight_kg, sqli.dimensions,
          sqli.crating_cost, sqli.lead_time_days
   FROM supplier_inquiries si
@@ -139,10 +132,6 @@ function getSupplierComparison(db, rfqId) {
   return db.prepare(SUPPLIER_COMPARISON_QUERY).all(rfqId);
 }
 
-function getLineItemSourcing(db, rfqId) {
-  return db.prepare(LINE_ITEM_SOURCING_QUERY).all(rfqId);
-}
-
 function getCurrencyRates(db) {
   return db.prepare(CURRENCY_RATES_QUERY).all();
 }
@@ -162,7 +151,6 @@ module.exports = {
   getLatestQuote,
   getQuoteLineItems,
   getSupplierComparison,
-  getLineItemSourcing,
   getCurrencyRates,
   getSupplierInquiriesForRfq,
   getFreightInquiriesForRfq,

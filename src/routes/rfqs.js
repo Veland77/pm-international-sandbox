@@ -10,18 +10,17 @@ const {
   getLatestQuote,
   getQuoteLineItems,
   getSupplierComparison,
-  getLineItemSourcing,
   getCurrencyRates,
   getSupplierInquiriesForRfq,
   getFreightInquiriesForRfq,
 } = require("../db/rfqQueries");
-const { buildOrderSummary, buildLineItemMargins, toUsd } = require("../db/orderSummary");
+const { estimateArrivalDate, toUsd } = require("../db/orderSummary");
+const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
+const { buildLineItemDisplayRows, buildTotals } = require("../db/marginCalc");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
 const { getOrderForRfq, getShipmentsForOrder } = require("../db/orderQueries");
 const { getSelectedFreightQuotesForRfq } = require("../db/freightQuoteSelectionQueries");
-const { getLandedPricesForRfq } = require("../db/quoteBuildQueries");
-const { buildQuoteDisplayRows, buildQuoteTotals } = require("../db/quoteBuildCalc");
 const { rfqListPage } = require("../views/rfqList");
 const { rfqDetailPage } = require("../views/rfqDetail");
 
@@ -43,11 +42,45 @@ router.get("/:id", (req, res) => {
   const lineItems = getLineItems(db, rfq.id);
   const quote = getLatestQuote(db, rfq.id);
   const quoteLineItems = quote ? getQuoteLineItems(db, quote.id) : [];
-  const supplierComparison = getSupplierComparison(db, rfq.id);
-  const sourcingRows = getLineItemSourcing(db, rfq.id);
-  const rates = getCurrencyRates(db);
-  const orderSummary = buildOrderSummary({ quoteLineItems, sourcingRows, rates });
-  const lineItemMargins = buildLineItemMargins({ quoteLineItems, sourcingRows, rates });
+  const rawSupplierComparison = getSupplierComparison(db, rfq.id);
+
+  // One shared calc for every buy/freight/sell/margin number on this
+  // page — the Order Summary card, the Line Items table, and the Quote
+  // section all read from the same displayRows/totals, so there's exactly
+  // one margin per line item, not a freight-exclusive and a
+  // freight-inclusive version disagreeing with each other.
+  const { allLineItems, lineCosts } = getLineCostsForRfq(db, rfq.id);
+  const anySourced = allLineItems.some((li) => li.supplier_id != null);
+  const sellPriceFormValues = {};
+  quoteLineItems.forEach((qli) => {
+    sellPriceFormValues[qli.rfq_line_item_id] = String(qli.unit_price_usd);
+  });
+  const displayRows = buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues);
+  const totals = buildTotals(displayRows);
+  const estimatedArrivalDate = estimateArrivalDate(allLineItems);
+  const displayRowsByLineItemId = new Map(displayRows.map((row) => [row.rfqLineItemId, row]));
+
+  // Match each Supplier Comparison row to a per-line freight cost only
+  // when it's the EXACT vendor-quote-line actually selected for that
+  // line — not just any row for a vendor that happens to be sourced
+  // elsewhere on the RFQ. Every other (non-winning) row structurally can
+  // never have a freight quote against it, since freight inquiries only
+  // ever get created for the already-selected vendor.
+  const winningSupplierQuoteLineItemIdByRfqLineItemId = new Map(
+    allLineItems
+      .filter((li) => li.supplier_quote_line_item_id != null)
+      .map((li) => [li.rfq_line_item_id, li.supplier_quote_line_item_id])
+  );
+  const supplierComparison = rawSupplierComparison.map((row) => {
+    const isWinningVendorLine =
+      row.supplier_quote_line_item_id != null &&
+      winningSupplierQuoteLineItemIdByRfqLineItemId.get(row.rfq_line_item_id) === row.supplier_quote_line_item_id;
+    const displayRow = isWinningVendorLine ? displayRowsByLineItemId.get(row.rfq_line_item_id) : null;
+    return {
+      ...row,
+      freightUnitUsd: displayRow ? displayRow.freightUnitUsd : null,
+    };
+  });
 
   const rfqAttachments = getRfqAttachments(db, rfq.id);
   const supplierInquiries = getSupplierInquiriesForRfq(db, rfq.id);
@@ -56,6 +89,7 @@ router.get("/:id", (req, res) => {
   );
 
   const freightInquiries = getFreightInquiriesForRfq(db, rfq.id);
+  const rates = getCurrencyRates(db);
   const rateMap = new Map(rates.map((r) => [r.currency_code, r.rate_to_usd]));
   const selectedFreightBySupplierId = new Map(
     getSelectedFreightQuotesForRfq(db, rfq.id).map((q) => [
@@ -67,32 +101,16 @@ router.get("/:id", (req, res) => {
   const order = getOrderForRfq(db, rfq.id);
   const shipments = order ? getShipmentsForOrder(db, order.id) : [];
 
-  // Reuses the same landed-price (buy + allocated freight) calc the quote
-  // create/edit form uses, so the saved quote's margin display here always
-  // matches what that screen would show for the same numbers.
-  const { allLineItems: allLineItemsWithSourcing, landedPrices } = getLandedPricesForRfq(db, rfq.id);
-  const anySourced = allLineItemsWithSourcing.some((li) => li.supplier_id != null);
-  const quoteSellPriceFormValues = {};
-  quoteLineItems.forEach((qli) => {
-    quoteSellPriceFormValues[qli.rfq_line_item_id] = String(qli.unit_price_usd);
-  });
-  const quoteDisplayRows = quote
-    ? buildQuoteDisplayRows(allLineItemsWithSourcing, landedPrices, quoteSellPriceFormValues)
-    : [];
-  const quoteTotals = quote ? buildQuoteTotals(quoteDisplayRows) : null;
-
   res.send(
     rfqDetailPage({
       rfq,
       lineItems,
       quote,
-      quoteDisplayRows,
-      quoteTotals,
+      displayRows,
+      totals,
       anySourced,
+      estimatedArrivalDate,
       supplierComparison,
-      sourcingRows,
-      orderSummary,
-      lineItemMargins,
       rfqAttachments,
       supplierInquiries,
       supplierInquiryAttachmentsByInquiryId,

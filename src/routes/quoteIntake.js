@@ -1,6 +1,6 @@
 // src/routes/quoteIntake.js
 // "Offer to Customer": turns the sourcing decisions already made (selected
-// vendor per line item, selected freight forwarder) into a customer-facing
+// vendor per line item, selected freight quote) into a customer-facing
 // quote. One quote per RFQ for now — a Draft can be edited in place
 // (same form, detects the existing Draft and prefills it) but creating a
 // second quote once one exists is blocked; that's re-quoting/versioning,
@@ -10,13 +10,9 @@ const express = require("express");
 const { getDb } = require("../db/connection");
 const { getRfqById, getLatestQuote, getQuoteLineItems } = require("../db/rfqQueries");
 const { addDays } = require("../db/orderSummary");
-const {
-  getLandedPricesForRfq,
-  createQuote,
-  updateDraftQuote,
-  markQuoteAsSent,
-} = require("../db/quoteBuildQueries");
-const { buildQuoteDisplayRows, buildQuoteTotals } = require("../db/quoteBuildCalc");
+const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
+const { buildLineItemDisplayRows, buildTotals } = require("../db/marginCalc");
+const { createQuote, updateDraftQuote, markQuoteAsSent } = require("../db/quoteBuildQueries");
 const { quoteNewFormPage } = require("../views/quoteNewForm");
 
 const router = express.Router();
@@ -24,8 +20,8 @@ const router = express.Router();
 function loadContext(db, rfqId) {
   const rfq = getRfqById(db, rfqId);
   if (!rfq) return null;
-  const { allLineItems, landedPrices } = getLandedPricesForRfq(db, rfqId);
-  return { rfq, allLineItems, landedPrices };
+  const { allLineItems, lineCosts } = getLineCostsForRfq(db, rfqId);
+  return { rfq, allLineItems, lineCosts };
 }
 
 router.get("/:id/quote/new", (req, res) => {
@@ -54,14 +50,15 @@ router.get("/:id/quote/new", (req, res) => {
       sellPriceFormValues[li.rfq_line_item_id] = String(existingSell);
       return;
     }
-    const landed = context.landedPrices.get(li.rfq_line_item_id);
-    if (landed && landed.landedUnitPriceUsd != null) {
-      sellPriceFormValues[li.rfq_line_item_id] = (landed.landedUnitPriceUsd * 1.185).toFixed(2);
+    const costs = context.lineCosts.get(li.rfq_line_item_id);
+    if (costs && costs.buyUnitPriceUsd != null) {
+      const totalCost = costs.buyUnitPriceUsd + (costs.freightUnitUsd || 0);
+      sellPriceFormValues[li.rfq_line_item_id] = (totalCost * 1.185).toFixed(2);
     }
   });
 
-  const displayRows = buildQuoteDisplayRows(context.allLineItems, context.landedPrices, sellPriceFormValues);
-  const totals = buildQuoteTotals(displayRows);
+  const displayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, sellPriceFormValues);
+  const totals = buildTotals(displayRows);
 
   const defaultValidUntil = existingQuote
     ? existingQuote.valid_until
@@ -107,7 +104,7 @@ router.post("/:id/quote/new", (req, res) => {
     errors.push("No line items are sourced yet — select a vendor before creating a quote.");
   }
 
-  const displayRows = buildQuoteDisplayRows(context.allLineItems, context.landedPrices, sellPriceFormValues);
+  const displayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, sellPriceFormValues);
 
   displayRows.forEach((row) => {
     if (row.sourced && row.sellUnitPriceUsd == null) {
@@ -123,7 +120,7 @@ router.post("/:id/quote/new", (req, res) => {
   }
 
   if (errors.length > 0) {
-    const totals = buildQuoteTotals(displayRows);
+    const totals = buildTotals(displayRows);
     return res.status(400).send(
       quoteNewFormPage({
         rfq: context.rfq,

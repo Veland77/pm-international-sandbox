@@ -1,8 +1,9 @@
 // src/public/quoteBuild.js
-// Live margin recompute for the quote create/edit form. Buy price per
-// line is embedded server-side (data-buy on each row) — this only
-// recomputes margin/totals as a preview while typing; the server
-// recomputes authoritatively on submit, this never decides what gets saved.
+// Live margin recompute for the quote create/edit form. Buy price and
+// freight cost per line are embedded server-side (data-buy/data-freight
+// on each row) — this only recomputes margin/totals as a preview while
+// typing; the server recomputes authoritatively on submit, this never
+// decides what gets saved.
 
 (function () {
   function formatUsd(n) {
@@ -12,6 +13,7 @@
 
   function recomputeRow(row) {
     const buy = parseFloat(row.dataset.buy);
+    const freight = parseFloat(row.dataset.freight) || 0;
     const quantity = parseFloat(row.dataset.quantity) || 1;
     const sellInput = row.querySelector(".quote-sell-price");
     const marginUsdCell = row.querySelector(".quote-margin-usd");
@@ -27,7 +29,7 @@
       return null;
     }
 
-    const marginUsd = sell - buy;
+    const marginUsd = sell - buy - freight;
     const marginPct = sell > 0 ? (marginUsd / sell) * 100 : null;
     const cls = marginUsd >= 0 ? "text-positive" : "text-negative";
     marginUsdCell.textContent = formatUsd(marginUsd);
@@ -35,18 +37,20 @@
     marginUsdCell.className = `quote-margin-usd ${cls}`;
     marginPctCell.className = `quote-margin-pct ${cls}`;
 
-    return { sell, buy, quantity };
+    return { sell, buy, freight, quantity };
   }
 
   function recomputeTotals() {
     const rows = document.querySelectorAll(".quote-line-row");
     const sellEl = document.getElementById("quote-total-sell");
     const buyEl = document.getElementById("quote-total-buy");
+    const freightEl = document.getElementById("quote-total-freight");
     const marginEl = document.getElementById("quote-total-margin");
-    if (!sellEl || !buyEl || !marginEl) return;
+    if (!sellEl || !buyEl || !freightEl || !marginEl) return;
 
     let totalSell = 0;
     let totalBuy = 0;
+    let totalFreight = 0;
     let any = false;
     rows.forEach((row) => {
       const r = recomputeRow(row);
@@ -54,20 +58,23 @@
       any = true;
       totalSell += r.sell * r.quantity;
       totalBuy += r.buy * r.quantity;
+      totalFreight += r.freight * r.quantity;
     });
 
     if (!any) {
       sellEl.textContent = "—";
       buyEl.textContent = "—";
+      freightEl.textContent = "—";
       marginEl.textContent = "—";
       marginEl.className = "stat-value";
       return;
     }
 
-    const marginUsd = totalSell - totalBuy;
+    const marginUsd = totalSell - totalBuy - totalFreight;
     const marginPct = totalSell > 0 ? (marginUsd / totalSell) * 100 : null;
     sellEl.textContent = formatUsd(totalSell);
     buyEl.textContent = formatUsd(totalBuy);
+    freightEl.textContent = formatUsd(totalFreight);
     marginEl.textContent = `${formatUsd(marginUsd)} (${marginPct == null ? "—" : `${marginPct.toFixed(1)}%`})`;
     marginEl.className = `stat-value ${marginUsd >= 0 ? "text-positive" : "text-negative"}`;
   }
