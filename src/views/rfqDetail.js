@@ -217,24 +217,66 @@ function supplierComparisonSection(rows) {
     </div>`;
 }
 
-function quoteSection(quote, quoteLineItems) {
+function quoteSection(rfq, quote, quoteDisplayRows, quoteTotals, anySourced) {
   if (!quote) {
-    return '<div class="card"><h2>Quote</h2><p>No quote yet.</p></div>';
+    if (!anySourced) {
+      return '<div class="card"><h2>Quote</h2><p>No quote yet — select a vendor for at least one line item first.</p></div>';
+    }
+    return `
+    <div class="card">
+      <h2>Quote</h2>
+      <p>No quote yet.</p>
+      <p><a class="btn btn-primary" href="/rfqs/${rfq.id}/quote/new">Create Quote</a></p>
+    </div>`;
   }
 
-  const quoteRows = quoteLineItems
-    .map(
-      (qli) => `
+  const quoteRows = quoteDisplayRows
+    .map((row) => {
+      if (!row.sourced) {
+        return `
     <tr>
-      <td>${escapeHtml(qli.description)}</td>
-      <td>${escapeHtml(qli.quantity)}</td>
-      <td>${escapeHtml(qli.unit)}</td>
-      <td>${escapeHtml(formatCurrency(qli.unit_price_usd))}</td>
-      <td>${escapeHtml(qli.lead_time_days)}</td>
-      <td>${escapeHtml(qli.target_margin_pct)}%</td>
-    </tr>`
-    )
+      <td>${escapeHtml(row.description)}</td>
+      <td>${escapeHtml(row.quantity)}</td>
+      <td>${escapeHtml(row.unit)}</td>
+      <td colspan="3" class="text-negative">Not sourced</td>
+    </tr>`;
+      }
+      // Only lines actually saved on this quote have a sell price — a
+      // sourced-but-not-yet-quoted line (added after this quote was
+      // created) has nothing to show here.
+      if (row.sellUnitPriceUsd == null) return "";
+
+      const marginText =
+        row.marginUnitUsd == null
+          ? "—"
+          : `${formatCurrency(row.marginUnitUsd)} (${row.marginPct == null ? "—" : `${row.marginPct.toFixed(1)}%`})`;
+
+      return `
+    <tr>
+      <td>${escapeHtml(row.description)}</td>
+      <td>${escapeHtml(row.quantity)}</td>
+      <td>${escapeHtml(row.unit)}</td>
+      <td>${escapeHtml(formatCurrency(row.buyUnitPriceUsd))}</td>
+      <td>${escapeHtml(formatCurrency(row.sellUnitPriceUsd))}</td>
+      <td class="${marginClass(row.marginUnitUsd)}">${escapeHtml(marginText)}</td>
+    </tr>`;
+    })
     .join("");
+
+  const totalsText = quoteTotals
+    ? `<strong>Total Sell:</strong> ${escapeHtml(formatCurrency(quoteTotals.totalSellUsd))} &middot;
+       <strong>Total Buy:</strong> ${escapeHtml(formatCurrency(quoteTotals.totalBuyUsd))} &middot;
+       <strong>Total Margin:</strong> <span class="${marginClass(quoteTotals.marginUsd)}">${escapeHtml(formatCurrency(quoteTotals.marginUsd))} (${quoteTotals.marginPct == null ? "—" : `${quoteTotals.marginPct.toFixed(1)}%`})</span>`
+    : "";
+
+  const actions =
+    quote.status === "Draft"
+      ? `
+      <a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/new">Edit Draft Quote</a>
+      <form method="POST" action="/rfqs/${rfq.id}/quote/mark-sent" style="display:inline;">
+        <button type="submit" class="btn btn-primary">Mark as Sent</button>
+      </form>`
+      : "";
 
   return `
     <div class="card">
@@ -242,10 +284,12 @@ function quoteSection(quote, quoteLineItems) {
       <p>Status: ${escapeHtml(quote.status)} &middot; Created: ${escapeHtml(formatDate(quote.created_date))} &middot; Valid until: ${escapeHtml(formatDate(quote.valid_until))}</p>
       <table>
         <thead>
-          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Unit Price (USD)</th><th>Lead Time (days)</th><th>Target Margin %</th></tr>
+          <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Margin</th></tr>
         </thead>
         <tbody>${quoteRows}</tbody>
       </table>
+      ${totalsText ? `<p>${totalsText}</p>` : ""}
+      <p>${actions}</p>
     </div>`;
 }
 
@@ -253,7 +297,9 @@ function rfqDetailPage({
   rfq,
   lineItems,
   quote,
-  quoteLineItems,
+  quoteDisplayRows = [],
+  quoteTotals = null,
+  anySourced = false,
   supplierComparison = [],
   sourcingRows = [],
   orderSummary,
@@ -302,7 +348,7 @@ function rfqDetailPage({
       </table>
     </div>
 
-    ${quoteSection(quote, quoteLineItems)}
+    ${quoteSection(rfq, quote, quoteDisplayRows, quoteTotals, anySourced)}
 
     ${supplierInquiriesSection(rfq.id, supplierInquiries)}
 

@@ -1,0 +1,180 @@
+// src/routes/quoteIntake.js
+// "Offer to Customer": turns the sourcing decisions already made (selected
+// vendor per line item, selected freight forwarder) into a customer-facing
+// quote. One quote per RFQ for now — a Draft can be edited in place
+// (same form, detects the existing Draft and prefills it) but creating a
+// second quote once one exists is blocked; that's re-quoting/versioning,
+// not built yet.
+
+const express = require("express");
+const { getDb } = require("../db/connection");
+const { getRfqById, getLatestQuote, getQuoteLineItems } = require("../db/rfqQueries");
+const { addDays } = require("../db/orderSummary");
+const {
+  getLandedPricesForRfq,
+  createQuote,
+  updateDraftQuote,
+  markQuoteAsSent,
+} = require("../db/quoteBuildQueries");
+const { buildQuoteDisplayRows, buildQuoteTotals } = require("../db/quoteBuildCalc");
+const { quoteNewFormPage } = require("../views/quoteNewForm");
+
+const router = express.Router();
+
+function loadContext(db, rfqId) {
+  const rfq = getRfqById(db, rfqId);
+  if (!rfq) return null;
+  const { allLineItems, landedPrices } = getLandedPricesForRfq(db, rfqId);
+  return { rfq, allLineItems, landedPrices };
+}
+
+router.get("/:id/quote/new", (req, res) => {
+  const db = getDb();
+  const context = loadContext(db, req.params.id);
+  if (!context) {
+    return res.status(404).send("RFQ not found");
+  }
+
+  const existingQuote = getLatestQuote(db, context.rfq.id);
+  if (existingQuote && existingQuote.status !== "Draft") {
+    return res.redirect(`/rfqs/${context.rfq.id}`);
+  }
+
+  const existingLines = existingQuote ? getQuoteLineItems(db, existingQuote.id) : [];
+  const existingSellByLineItemId = new Map(existingLines.map((l) => [l.rfq_line_item_id, l.unit_price_usd]));
+
+  // Sourced lines with no existing quote get a suggested sell price (buy +
+  // freight marked up ~18.5%, the same flat default used at RFQ-intake
+  // time) — a starting point, not a decision; fully overridable.
+  const sellPriceFormValues = {};
+  context.allLineItems.forEach((li) => {
+    if (li.supplier_id == null) return;
+    const existingSell = existingSellByLineItemId.get(li.rfq_line_item_id);
+    if (existingSell != null) {
+      sellPriceFormValues[li.rfq_line_item_id] = String(existingSell);
+      return;
+    }
+    const landed = context.landedPrices.get(li.rfq_line_item_id);
+    if (landed && landed.landedUnitPriceUsd != null) {
+      sellPriceFormValues[li.rfq_line_item_id] = (landed.landedUnitPriceUsd * 1.185).toFixed(2);
+    }
+  });
+
+  const displayRows = buildQuoteDisplayRows(context.allLineItems, context.landedPrices, sellPriceFormValues);
+  const totals = buildQuoteTotals(displayRows);
+
+  const defaultValidUntil = existingQuote
+    ? existingQuote.valid_until
+    : addDays(new Date().toISOString().slice(0, 10), 30);
+
+  res.send(
+    quoteNewFormPage({
+      rfq: context.rfq,
+      isEditing: !!existingQuote,
+      displayRows,
+      totals,
+      formValues: {
+        valid_until: defaultValidUntil,
+        promised_delivery_date: existingQuote ? existingQuote.promised_delivery_date || "" : "",
+      },
+      errors: [],
+    })
+  );
+});
+
+router.post("/:id/quote/new", (req, res) => {
+  const db = getDb();
+  const context = loadContext(db, req.params.id);
+  if (!context) {
+    return res.status(404).send("RFQ not found");
+  }
+
+  const existingQuote = getLatestQuote(db, context.rfq.id);
+  if (existingQuote && existingQuote.status !== "Draft") {
+    return res.redirect(`/rfqs/${context.rfq.id}`);
+  }
+
+  const validUntil = req.body.valid_until;
+  const promisedDeliveryDate = req.body.promised_delivery_date || null;
+  const sellPriceFormValues = req.body.sell_price || {};
+  const confirmNegativeMargin = req.body.confirm_negative_margin === "on";
+
+  const sourcedLineItemCount = context.allLineItems.filter((li) => li.supplier_id != null).length;
+
+  const errors = [];
+  if (!validUntil) errors.push("Enter a valid-until date.");
+  if (sourcedLineItemCount === 0) {
+    errors.push("No line items are sourced yet — select a vendor before creating a quote.");
+  }
+
+  const displayRows = buildQuoteDisplayRows(context.allLineItems, context.landedPrices, sellPriceFormValues);
+
+  displayRows.forEach((row) => {
+    if (row.sourced && row.sellUnitPriceUsd == null) {
+      errors.push(`Enter a sell price for "${row.description}".`);
+    }
+  });
+
+  const hasNegativeMargin = displayRows.some(
+    (row) => row.sourced && row.marginUnitUsd != null && row.marginUnitUsd < 0
+  );
+  if (errors.length === 0 && hasNegativeMargin && !confirmNegativeMargin) {
+    errors.push("One or more lines have a negative margin — check the confirmation box below to save anyway.");
+  }
+
+  if (errors.length > 0) {
+    const totals = buildQuoteTotals(displayRows);
+    return res.status(400).send(
+      quoteNewFormPage({
+        rfq: context.rfq,
+        isEditing: !!existingQuote,
+        displayRows,
+        totals,
+        formValues: {
+          valid_until: validUntil,
+          promised_delivery_date: promisedDeliveryDate,
+          confirm_negative_margin: confirmNegativeMargin,
+        },
+        errors,
+        hasNegativeMargin,
+      })
+    );
+  }
+
+  const lines = displayRows
+    .filter((row) => row.sourced)
+    .map((row) => {
+      const sourcedRow = context.allLineItems.find((li) => li.rfq_line_item_id === row.rfqLineItemId);
+      return {
+        rfqLineItemId: row.rfqLineItemId,
+        sellUnitPriceUsd: row.sellUnitPriceUsd,
+        leadTimeDays: sourcedRow.lead_time_days,
+        targetMarginPct: row.marginPct == null ? 0 : row.marginPct,
+      };
+    });
+
+  if (existingQuote) {
+    updateDraftQuote(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, lines });
+  } else {
+    createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, lines });
+  }
+
+  res.redirect(`/rfqs/${context.rfq.id}`);
+});
+
+router.post("/:id/quote/mark-sent", (req, res) => {
+  const db = getDb();
+  const rfq = getRfqById(db, req.params.id);
+  if (!rfq) {
+    return res.status(404).send("RFQ not found");
+  }
+
+  const quote = getLatestQuote(db, rfq.id);
+  if (quote && quote.status === "Draft") {
+    markQuoteAsSent(db, quote.id);
+  }
+
+  res.redirect(`/rfqs/${rfq.id}`);
+});
+
+module.exports = router;

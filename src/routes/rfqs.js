@@ -20,6 +20,8 @@ const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
 const { getOrderForRfq, getShipmentsForOrder } = require("../db/orderQueries");
 const { getSelectedFreightQuotesForRfq } = require("../db/freightQuoteSelectionQueries");
+const { getLandedPricesForRfq } = require("../db/quoteBuildQueries");
+const { buildQuoteDisplayRows, buildQuoteTotals } = require("../db/quoteBuildCalc");
 const { rfqListPage } = require("../views/rfqList");
 const { rfqDetailPage } = require("../views/rfqDetail");
 
@@ -65,12 +67,28 @@ router.get("/:id", (req, res) => {
   const order = getOrderForRfq(db, rfq.id);
   const shipments = order ? getShipmentsForOrder(db, order.id) : [];
 
+  // Reuses the same landed-price (buy + allocated freight) calc the quote
+  // create/edit form uses, so the saved quote's margin display here always
+  // matches what that screen would show for the same numbers.
+  const { allLineItems: allLineItemsWithSourcing, landedPrices } = getLandedPricesForRfq(db, rfq.id);
+  const anySourced = allLineItemsWithSourcing.some((li) => li.supplier_id != null);
+  const quoteSellPriceFormValues = {};
+  quoteLineItems.forEach((qli) => {
+    quoteSellPriceFormValues[qli.rfq_line_item_id] = String(qli.unit_price_usd);
+  });
+  const quoteDisplayRows = quote
+    ? buildQuoteDisplayRows(allLineItemsWithSourcing, landedPrices, quoteSellPriceFormValues)
+    : [];
+  const quoteTotals = quote ? buildQuoteTotals(quoteDisplayRows) : null;
+
   res.send(
     rfqDetailPage({
       rfq,
       lineItems,
       quote,
-      quoteLineItems,
+      quoteDisplayRows,
+      quoteTotals,
+      anySourced,
       supplierComparison,
       sourcingRows,
       orderSummary,
