@@ -413,7 +413,7 @@ function rfqDetailPage({
   const body = `
     <a class="back-link" href="/rfqs">&larr; All RFQs</a>
     <h1>${escapeHtml(rfq.rfq_number)} — ${escapeHtml(rfq.project_name)}</h1>
-    <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(formatDate(rfq.created_date))} &middot; Due: ${escapeHtml(formatDate(rfq.due_date))}</p>
+    <p>Status: ${escapeHtml(rfq.status)} &middot; Created: ${escapeHtml(formatDate(rfq.created_date))} &middot; Due: ${escapeHtml(formatDate(rfq.due_date))}${order ? ` &middot; <a href="/orders/${order.id}">View Order (${escapeHtml(order.po_number)}) &rarr;</a>` : ""}</p>
 
     ${orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate, shipmentSizeEstimate)}
 
