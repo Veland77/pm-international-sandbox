@@ -1,7 +1,9 @@
 // src/views/freightInquiryNewForm.js
-// Form for creating a new Freight Inquiry ("FRQ") from an RFQ: pick a
+// Form for creating Freight Inquiries ("FRQ") from an RFQ: pick a
 // forwarder, checkbox-select which already-sourced line items need a
-// quote.
+// quote. Selecting line items from more than one vendor is allowed — that
+// produces one freight inquiry per vendor's pickup location, never one
+// combined request (see freightInquiryGrouping.js).
 
 const { layout } = require("./layout");
 const { escapeHtml } = require("./htmlHelpers");
@@ -10,6 +12,15 @@ function errorList(errors) {
   if (!errors.length) return "";
   const items = errors.map((e) => `<li>${escapeHtml(e)}</li>`).join("");
   return `<div class="form-errors"><strong>Please fix the following:</strong><ul>${items}</ul></div>`;
+}
+
+function forwarderOptions(forwarders, selectedId) {
+  return forwarders
+    .map((f) => {
+      const selected = String(selectedId) === String(f.id) ? " selected" : "";
+      return `<option value="${f.id}"${selected}>${escapeHtml(f.name)} (${escapeHtml(f.country)})</option>`;
+    })
+    .join("");
 }
 
 function lineItemCheckboxRows(lineItems, selectedIds) {
@@ -28,7 +39,7 @@ function lineItemCheckboxRows(lineItems, selectedIds) {
     .join("");
 }
 
-function freightInquiryNewFormPage({ rfq, sourcedLineItems, formValues = {}, errors = [] }) {
+function freightInquiryNewFormPage({ rfq, sourcedLineItems, forwarders, formValues = {}, errors = [] }) {
   const selectedIds = (formValues.line_item_ids || []).map(Number);
 
   const body = `
@@ -39,8 +50,11 @@ function freightInquiryNewFormPage({ rfq, sourcedLineItems, formValues = {}, err
       <div class="card">
         <h2>Freight Forwarder</h2>
         <label class="field">
-          <span class="field-label">Forwarder Name</span>
-          <input type="text" name="freight_forwarder_name" value="${escapeHtml(formValues.freight_forwarder_name || "")}" required>
+          <span class="field-label">Forwarder</span>
+          <select name="freight_forwarder_id" required>
+            <option value="">Select forwarder</option>
+            ${forwarderOptions(forwarders, formValues.freight_forwarder_id)}
+          </select>
         </label>
       </div>
 
@@ -52,7 +66,7 @@ function freightInquiryNewFormPage({ rfq, sourcedLineItems, formValues = {}, err
           </thead>
           <tbody>${lineItemCheckboxRows(sourcedLineItems, selectedIds)}</tbody>
         </table>
-        <p style="color: var(--color-text-muted);">Only line items with a selected vendor are shown — weight, dimensions, and ready date all come from that vendor's quote.</p>
+        <p style="color: var(--color-text-muted);">Only line items with a selected vendor are shown — weight, dimensions, and ready date all come from that vendor's quote. Selecting line items from more than one vendor creates one freight inquiry per vendor's pickup location, not one combined request.</p>
       </div>
 
       <p><button type="submit" class="btn btn-primary">Send Freight Inquiry</button></p>

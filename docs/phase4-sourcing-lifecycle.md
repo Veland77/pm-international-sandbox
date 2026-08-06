@@ -147,3 +147,17 @@ Fails closed: if either env var is unset, every request is denied rather than al
 Documentation only — no code changes yet. This applies once quote creation/editing gets built, not to the RFQ intake form.
 
 Whenever a future step lets someone set or edit a customer-facing sell price, if the resulting margin would be negative (selling below the selected vendor's cost), the system must show a clear warning and require explicit manual confirmation before it can be saved. Not silently allowed, and not silently blocked either — negative margins are sometimes a real, deliberate business decision (loss-leader, relationship deal), but they should never happen by accident.
+
+## Future: freight estimation & final weight/dimensions
+
+Documentation only — no code changes yet. This applies once the freight-quote-history and expediting milestone-tracking features exist, not to what's currently being built.
+
+1. **Freight quotes should never be deleted or overwritten.** Every quote received against a `freight_inquiries` row — including losing/non-selected ones — should be logged permanently in `freight_quotes`, not replaced or cleaned up over time. This builds a historical reference (by vendor, by route, by weight range) that can eventually ballpark a freight estimate before a real quote comes back, since customers commonly accept a rough figure to place a PO rather than waiting for a fully confirmed one.
+
+2. **Vendor-quoted weight/dimensions at RFQ time are rough estimates, not final figures.** The `weight_kg`/`dimensions` captured on `supplier_quote_line_items` are known at quoting time, before the item is actually produced — accurate figures typically aren't available until it's produced and crated. Eventually need a second, separate "final confirmed weight/dimensions" capture point — likely at the shipment's **Ready for Pickup/FCA** milestone (see `shipment_milestones` / the Expediting workscreen) — distinct from the early estimate. The final figure should be authoritative for actual shipment execution and paperwork; the early estimate remains useful only for building the initial customer quote and a ballpark freight number.
+
+## Future: customs/HS code and tariff logic
+
+Documentation only — no code changes yet. This applies once a customs/tariff module gets built, not to anything currently in progress.
+
+`item_numbers` already encodes form and material for every line item (see the Form/Material code tables above). Eventually an HS (Harmonized System) code should be derivable from that same form + material combination, and combined with a shipment's destination country, used to estimate customs duties as part of landed cost — tariff treatment varies significantly by destination (e.g. certain steel grades are tariffed entering the US but not the UK), so the destination isn't optional context here, it's a required input to the estimate.

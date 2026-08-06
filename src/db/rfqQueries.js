@@ -94,9 +94,10 @@ const SUPPLIER_INQUIRIES_FOR_RFQ_QUERY = `
 `;
 
 const FREIGHT_INQUIRIES_FOR_RFQ_QUERY = `
-  SELECT fi.id, fi.frq_number, fi.freight_forwarder_name, fi.status, fi.sent_date,
+  SELECT fi.id, fi.frq_number, ff.name AS freight_forwarder_name, fi.status, fi.sent_date,
          GROUP_CONCAT(li.description, '; ') AS line_item_descriptions
   FROM freight_inquiries fi
+  JOIN freight_forwarders ff ON ff.id = fi.freight_forwarder_id
   LEFT JOIN freight_inquiry_line_items fil ON fil.freight_inquiry_id = fi.id
   LEFT JOIN rfq_line_items li ON li.id = fil.rfq_line_item_id
   WHERE fi.rfq_id = ?

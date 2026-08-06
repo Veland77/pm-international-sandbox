@@ -1,12 +1,20 @@
 // src/routes/freightIntake.js
-// Creates a new Freight Inquiry ("FRQ") from an existing RFQ: pick a
-// forwarder, choose which already-sourced line items need a quote.
+// Creates Freight Inquiries ("FRQ") from an existing RFQ: pick a
+// forwarder, choose which already-sourced line items need a quote. A
+// selection spanning more than one vendor produces one freight inquiry
+// per vendor's pickup location, never one combined request (see
+// src/db/freightInquiryGrouping.js).
 
 const express = require("express");
 const { getDb } = require("../db/connection");
 const { getRfqById } = require("../db/rfqQueries");
-const { getSourcedLineItemsForFreight, createFreightInquiry } = require("../db/freightIntakeQueries");
+const {
+  getSourcedLineItemsForFreight,
+  getFreightForwardersList,
+  createFreightInquiries,
+} = require("../db/freightIntakeQueries");
 const { freightInquiryNewFormPage } = require("../views/freightInquiryNewForm");
+const { freightInquiryCreationSummaryPage } = require("../views/freightInquiryCreationSummary");
 
 const router = express.Router();
 
@@ -19,8 +27,9 @@ router.get("/:id/freight-inquiries/new", (req, res) => {
   }
 
   const sourcedLineItems = getSourcedLineItemsForFreight(db, rfq.id);
+  const forwarders = getFreightForwardersList(db);
 
-  res.send(freightInquiryNewFormPage({ rfq, sourcedLineItems, formValues: {}, errors: [] }));
+  res.send(freightInquiryNewFormPage({ rfq, sourcedLineItems, forwarders, formValues: {}, errors: [] }));
 });
 
 router.post("/:id/freight-inquiries", (req, res) => {
@@ -32,13 +41,14 @@ router.post("/:id/freight-inquiries", (req, res) => {
   }
 
   const sourcedLineItems = getSourcedLineItemsForFreight(db, rfq.id);
-  const freightForwarderName = (req.body.freight_forwarder_name || "").trim();
+  const forwarders = getFreightForwardersList(db);
+  const freightForwarderId = req.body.freight_forwarder_id ? Number(req.body.freight_forwarder_id) : null;
   // Express parses a single checked checkbox as a string, multiple as an
   // array — concat normalizes both (and a missing field) into an array.
   const selectedIds = [].concat(req.body.line_item_ids || []).map(Number);
 
   const errors = [];
-  if (!freightForwarderName) errors.push("Enter the freight forwarder's name.");
+  if (!freightForwarderId) errors.push("Select a freight forwarder.");
   if (selectedIds.length === 0) errors.push("Select at least one line item.");
 
   if (errors.length > 0) {
@@ -46,7 +56,8 @@ router.post("/:id/freight-inquiries", (req, res) => {
       freightInquiryNewFormPage({
         rfq,
         sourcedLineItems,
-        formValues: { freight_forwarder_name: freightForwarderName, line_item_ids: selectedIds },
+        forwarders,
+        formValues: { freight_forwarder_id: freightForwarderId, line_item_ids: selectedIds },
         errors,
       })
     );
@@ -54,17 +65,15 @@ router.post("/:id/freight-inquiries", (req, res) => {
 
   // Filtering against this RFQ's own sourced line items means a bogus/
   // foreign id in the submitted list is silently dropped, never trusted.
-  const validIds = sourcedLineItems
-    .map((li) => li.rfq_line_item_id)
-    .filter((id) => selectedIds.includes(id));
+  const selectedLineItems = sourcedLineItems.filter((li) => selectedIds.includes(li.rfq_line_item_id));
 
-  const { freightInquiryId } = createFreightInquiry(db, {
+  const createdInquiries = createFreightInquiries(db, {
     rfqId: rfq.id,
-    freightForwarderName,
-    rfqLineItemIds: validIds,
+    freightForwarderId,
+    sourcedLineItems: selectedLineItems,
   });
 
-  res.redirect(`/freight-inquiries/${freightInquiryId}/print`);
+  res.send(freightInquiryCreationSummaryPage({ rfq, createdInquiries }));
 });
 
 module.exports = router;

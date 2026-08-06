@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 12;
+const SCHEMA_VERSION = 13;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -308,16 +308,27 @@ CREATE TABLE IF NOT EXISTS shipment_line_items (
   order_line_item_id INTEGER NOT NULL REFERENCES order_line_items(id)
 );
 
+-- Same shape as suppliers — a fixed pool to pick from rather than free
+-- text, so a forwarder can't be typo'd into two different records.
+CREATE TABLE IF NOT EXISTS freight_forwarders (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  country TEXT NOT NULL,
+  region TEXT NOT NULL,
+  specialty TEXT NOT NULL
+);
+
 -- A freight quote request ("FRQ"), sent to a freight forwarder. Tied to
 -- the RFQ, not a shipment — freight pricing is part of what builds the
 -- customer quote in the first place (vendor price + crating + freight),
--- well before there's a PO or a shipment. freight_forwarder_name is
--- plain text for now; no separate forwarder table yet.
+-- well before there's a PO or a shipment. Always scoped to line items
+-- from a single vendor's pickup location — see freightInquiryGrouping.js
+-- for why a request can never mix locations.
 CREATE TABLE IF NOT EXISTS freight_inquiries (
   id INTEGER PRIMARY KEY,
   frq_number TEXT NOT NULL UNIQUE,  -- e.g. FRQ-7001, same style/generation as rfq_number/inquiry_number
   rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
-  freight_forwarder_name TEXT NOT NULL,
+  freight_forwarder_id INTEGER NOT NULL REFERENCES freight_forwarders(id),
   sent_date TEXT NOT NULL,
   status TEXT NOT NULL              -- 'Sent', 'Quoted', 'Declined'
 );

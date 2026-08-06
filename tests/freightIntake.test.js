@@ -15,8 +15,9 @@ const { getDb } = require("../src/db/connection");
 const { SCHEMA } = require("../src/db/schema");
 const {
   getSourcedLineItemsForFreight,
+  getFreightForwardersList,
   getNextFrqNumber,
-  createFreightInquiry,
+  createFreightInquiries,
 } = require("../src/db/freightIntakeQueries");
 
 const db = getDb();
@@ -57,18 +58,34 @@ const line2Id = db
   )
   .run(rfqId, materialId, productFormId, '6" Ball Valve', 5, "EA").lastInsertRowid;
 
-// Deliberately left unsourced to confirm it's excluded from freight eligibility.
+// Sourced from a second, different vendor — used to confirm a multi-vendor
+// selection splits into separate freight inquiries.
 const line3Id = db
+  .prepare(
+    "INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, description, quantity, unit) VALUES (?, ?, ?, ?, ?, ?)"
+  )
+  .run(rfqId, materialId, productFormId, '2" Ball Valve', 8, "EA").lastInsertRowid;
+
+// Deliberately left unsourced to confirm it's excluded from freight eligibility.
+const line4Id = db
   .prepare(
     "INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, description, quantity, unit) VALUES (?, ?, ?, ?, ?, ?)"
   )
   .run(rfqId, materialId, productFormId, '8" Ball Valve', 2, "EA").lastInsertRowid;
 
-const supplierId = db
+const supplierAId = db
   .prepare("INSERT INTO suppliers (name, country, region, specialty) VALUES (?, ?, ?, ?)")
-  .run("Test Supplier", "Italy", "Europe", "Valves").lastInsertRowid;
+  .run("Test Supplier A", "Italy", "Europe", "Valves").lastInsertRowid;
 
-function sourceLineItem(rfqLineItemId, unitPrice) {
+const supplierBId = db
+  .prepare("INSERT INTO suppliers (name, country, region, specialty) VALUES (?, ?, ?, ?)")
+  .run("Test Supplier B", "Germany", "Europe", "Valves").lastInsertRowid;
+
+const forwarderId = db
+  .prepare("INSERT INTO freight_forwarders (name, country, region, specialty) VALUES (?, ?, ?, ?)")
+  .run("Test Forwarder", "United Kingdom", "Europe", "General freight").lastInsertRowid;
+
+function sourceLineItem(rfqLineItemId, supplierId, unitPrice) {
   const inquiryId = db
     .prepare(
       "INSERT INTO supplier_inquiries (inquiry_number, rfq_id, supplier_id, sent_date, status) VALUES (?, ?, ?, ?, ?)"
@@ -96,46 +113,84 @@ function sourceLineItem(rfqLineItemId, unitPrice) {
     .run(rfqLineItemId, supplierQuoteLineId, "2026-01-04").lastInsertRowid;
 }
 
-sourceLineItem(line1Id, 80);
-sourceLineItem(line2Id, 160);
+sourceLineItem(line1Id, supplierAId, 80);
+sourceLineItem(line2Id, supplierAId, 160);
+sourceLineItem(line3Id, supplierBId, 60);
 
-test("getSourcedLineItemsForFreight only returns line items with a selected vendor", () => {
+test("getSourcedLineItemsForFreight only returns line items with a selected vendor, including supplier id", () => {
   const rows = getSourcedLineItemsForFreight(db, rfqId);
-  assert.equal(rows.length, 2);
-  assert.ok(!rows.some((r) => r.rfq_line_item_id === line3Id));
+  assert.equal(rows.length, 3);
+  assert.ok(!rows.some((r) => r.rfq_line_item_id === line4Id));
+  assert.ok(rows.every((r) => r.supplier_id != null));
+});
+
+test("getFreightForwardersList returns forwarders ordered by name", () => {
+  const forwarders = getFreightForwardersList(db);
+  assert.equal(forwarders.length, 1);
+  assert.equal(forwarders[0].name, "Test Forwarder");
 });
 
 test("getNextFrqNumber starts after 7000 when no freight inquiries exist", () => {
   assert.equal(getNextFrqNumber(db), "FRQ-7001");
 });
 
-test("createFreightInquiry creates the inquiry and its line items", () => {
-  const result = createFreightInquiry(db, {
+test("a single-vendor selection creates exactly one freight inquiry", () => {
+  const created = createFreightInquiries(db, {
     rfqId,
-    freightForwarderName: "Test Forwarder",
-    rfqLineItemIds: [line1Id, line2Id],
+    freightForwarderId: forwarderId,
+    sourcedLineItems: getSourcedLineItemsForFreight(db, rfqId).filter((li) => li.rfq_line_item_id !== line3Id),
   });
 
-  assert.equal(result.frqNumber, "FRQ-7001");
+  assert.equal(created.length, 1);
+  assert.equal(created[0].frqNumber, "FRQ-7001");
+  assert.equal(created[0].supplierName, "Test Supplier A");
 
-  const inquiry = db.prepare("SELECT * FROM freight_inquiries WHERE id = ?").get(result.freightInquiryId);
+  const inquiry = db.prepare("SELECT * FROM freight_inquiries WHERE id = ?").get(created[0].freightInquiryId);
   assert.equal(inquiry.rfq_id, rfqId);
-  assert.equal(inquiry.freight_forwarder_name, "Test Forwarder");
+  assert.equal(inquiry.freight_forwarder_id, forwarderId);
   assert.equal(inquiry.status, "Sent");
 
   const lines = db
     .prepare("SELECT * FROM freight_inquiry_line_items WHERE freight_inquiry_id = ?")
-    .all(result.freightInquiryId);
+    .all(created[0].freightInquiryId);
   assert.equal(lines.length, 2);
 });
 
-test("a second freight inquiry continues the FRQ number sequence", () => {
-  const result = createFreightInquiry(db, {
+test("a selection spanning two vendors creates two separate freight inquiries, correctly scoped", () => {
+  const allSourced = getSourcedLineItemsForFreight(db, rfqId);
+
+  const created = createFreightInquiries(db, {
     rfqId,
-    freightForwarderName: "Second Forwarder",
-    rfqLineItemIds: [line1Id],
+    freightForwarderId: forwarderId,
+    sourcedLineItems: allSourced, // all 3 sourced lines — 2 from supplier A, 1 from supplier B
   });
-  assert.equal(result.frqNumber, "FRQ-7002");
+
+  assert.equal(created.length, 2);
+  assert.deepEqual(
+    created.map((c) => c.frqNumber).sort(),
+    ["FRQ-7002", "FRQ-7003"]
+  );
+
+  const supplierAInquiry = created.find((c) => c.supplierName === "Test Supplier A");
+  const supplierBInquiry = created.find((c) => c.supplierName === "Test Supplier B");
+
+  const supplierALines = db
+    .prepare("SELECT rfq_line_item_id FROM freight_inquiry_line_items WHERE freight_inquiry_id = ?")
+    .all(supplierAInquiry.freightInquiryId)
+    .map((r) => r.rfq_line_item_id);
+  assert.deepEqual(supplierALines.sort(), [line1Id, line2Id].sort());
+
+  const supplierBLines = db
+    .prepare("SELECT rfq_line_item_id FROM freight_inquiry_line_items WHERE freight_inquiry_id = ?")
+    .all(supplierBInquiry.freightInquiryId)
+    .map((r) => r.rfq_line_item_id);
+  assert.deepEqual(supplierBLines, [line3Id]);
+
+  // Both inquiries went to the same forwarder — only the pickup location differs.
+  const inquiries = created.map((c) =>
+    db.prepare("SELECT freight_forwarder_id FROM freight_inquiries WHERE id = ?").get(c.freightInquiryId)
+  );
+  inquiries.forEach((i) => assert.equal(i.freight_forwarder_id, forwarderId));
 });
 
 test.after(() => {

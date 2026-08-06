@@ -7,9 +7,11 @@
 // (the end customer is).
 
 const FREIGHT_PRINT_QUERY = `
-  SELECT fi.id, fi.frq_number, fi.freight_forwarder_name, fi.sent_date,
+  SELECT fi.id, fi.frq_number, fi.sent_date,
+         ff.name AS freight_forwarder_name,
          u.name AS sales_rep_name
   FROM freight_inquiries fi
+  JOIN freight_forwarders ff ON ff.id = fi.freight_forwarder_id
   JOIN rfqs r ON r.id = fi.rfq_id
   JOIN users u ON u.id = r.sales_rep_id
   WHERE fi.id = ?

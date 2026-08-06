@@ -7,6 +7,7 @@ const { getDb } = require("../src/db/connection");
 const { SCHEMA, SCHEMA_VERSION } = require("../src/db/schema");
 const { formCodeForLineItem, materialCodeForName, buildItemNumber, markAsNotConverted } = require("../src/db/itemNumbers");
 const { SUPPLIERS, SUPPLIER_SCENARIOS_BY_RFQ_INDEX, LINE_ITEM_SOURCING_BY_RFQ_INDEX } = require("./supplierFixtures");
+const { FREIGHT_FORWARDERS } = require("./freightForwarderFixtures");
 const { seedSuppliersForRfq } = require("./seedSuppliers");
 const { MILESTONE_TYPES } = require("../src/db/shipmentMilestoneTypes");
 const { saveShipmentDocument } = require("../src/storage/shipmentDocumentStorage");
@@ -184,6 +185,9 @@ const insertActivity = db.prepare(`
 const insertSupplier = db.prepare(
   "INSERT INTO suppliers (name, country, region, specialty) VALUES (?, ?, ?, ?)"
 );
+const insertFreightForwarder = db.prepare(
+  "INSERT INTO freight_forwarders (name, country, region, specialty) VALUES (?, ?, ?, ?)"
+);
 const insertCurrencyRate = db.prepare(
   "INSERT INTO currency_rates (currency_code, rate_to_usd, as_of_date) VALUES (?, ?, ?)"
 );
@@ -217,7 +221,7 @@ const insertShipmentLineItem = db.prepare(
   "INSERT INTO shipment_line_items (shipment_id, order_line_item_id) VALUES (?, ?)"
 );
 const insertFreightInquiry = db.prepare(`
-  INSERT INTO freight_inquiries (frq_number, rfq_id, freight_forwarder_name, sent_date, status)
+  INSERT INTO freight_inquiries (frq_number, rfq_id, freight_forwarder_id, sent_date, status)
   VALUES (?, ?, ?, ?, ?)
 `);
 const insertFreightInquiryLine = db.prepare(
@@ -260,6 +264,7 @@ const seedTransaction = db.transaction(() => {
     DELETE FROM freight_inquiry_line_items;
     DELETE FROM freight_quotes;
     DELETE FROM freight_inquiries;
+    DELETE FROM freight_forwarders;
     DELETE FROM orders;
     DELETE FROM purchase_orders;
     DELETE FROM line_item_sourcing;
@@ -309,6 +314,11 @@ const seedTransaction = db.transaction(() => {
   const supplierIds = SUPPLIERS.map(
     (s) => insertSupplier.run(s.name, s.country, s.region, s.specialty).lastInsertRowid
   );
+
+  const freightForwarderIdByName = {};
+  FREIGHT_FORWARDERS.forEach((f) => {
+    freightForwarderIdByName[f.name] = insertFreightForwarder.run(f.name, f.country, f.region, f.specialty).lastInsertRowid;
+  });
 
   fakeCurrencyRates.forEach((r) => {
     insertCurrencyRate.run(r.currency_code, r.rate_to_usd, r.as_of_date);
@@ -482,7 +492,7 @@ const seedTransaction = db.transaction(() => {
   const freightInquiryId = insertFreightInquiry.run(
     nextFrqNumber(),
     deltaRidge.rfqId,
-    "Mediterranean Freight Solutions",
+    freightForwarderIdByName["Mediterranean Freight Solutions"],
     daysFromNow(-30),
     "Quoted"
   ).lastInsertRowid;
