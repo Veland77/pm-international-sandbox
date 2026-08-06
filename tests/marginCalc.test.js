@@ -8,6 +8,7 @@ const {
   toSourcedLineItems,
   buildLineCosts,
   buildMargin,
+  suggestSellPrice,
   buildLineItemDisplayRows,
   buildTotals,
 } = require("../src/db/marginCalc");
@@ -120,6 +121,21 @@ test("buildMargin can be negative — real signal, not suppressed", () => {
   const { marginUnitUsd, marginPct } = buildMargin(80, 90, 15);
   assert.equal(marginUnitUsd, -25);
   assert.ok(marginPct < 0);
+});
+
+test("suggestSellPrice marks up item cost and freight cost separately, then sums them", () => {
+  // 30% on buy, 15% on freight — never blended into one flat rate.
+  const suggested = suggestSellPrice(100, 20);
+  assert.equal(suggested, 100 * 1.3 + 20 * 1.15);
+});
+
+test("suggestSellPrice treats a null freight (not yet arranged) as $0, marking up buy price only", () => {
+  const suggested = suggestSellPrice(100, null);
+  assert.equal(suggested, 100 * 1.3);
+});
+
+test("suggestSellPrice returns null when buy price is unknown", () => {
+  assert.equal(suggestSellPrice(null, 20), null);
 });
 
 test("buildLineItemDisplayRows flags an unsourced line and excludes it from pricing", () => {

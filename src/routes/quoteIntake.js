@@ -11,7 +11,7 @@ const { getDb } = require("../db/connection");
 const { getRfqById, getLatestQuote, getQuoteLineItems } = require("../db/rfqQueries");
 const { addDays } = require("../db/orderSummary");
 const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
-const { buildLineItemDisplayRows, buildTotals } = require("../db/marginCalc");
+const { buildLineItemDisplayRows, buildTotals, suggestSellPrice } = require("../db/marginCalc");
 const { createQuote, updateDraftQuote, markQuoteAsSent } = require("../db/quoteBuildQueries");
 const { quoteNewFormPage } = require("../views/quoteNewForm");
 
@@ -39,9 +39,9 @@ router.get("/:id/quote/new", (req, res) => {
   const existingLines = existingQuote ? getQuoteLineItems(db, existingQuote.id) : [];
   const existingSellByLineItemId = new Map(existingLines.map((l) => [l.rfq_line_item_id, l.unit_price_usd]));
 
-  // Sourced lines with no existing quote get a suggested sell price (buy +
-  // freight marked up ~18.5%, the same flat default used at RFQ-intake
-  // time) — a starting point, not a decision; fully overridable.
+  // Sourced lines with no existing quote get a suggested sell price (item
+  // cost and freight cost marked up separately, then summed) — a starting
+  // point, not a decision; fully overridable.
   const sellPriceFormValues = {};
   context.allLineItems.forEach((li) => {
     if (li.supplier_id == null) return;
@@ -51,9 +51,9 @@ router.get("/:id/quote/new", (req, res) => {
       return;
     }
     const costs = context.lineCosts.get(li.rfq_line_item_id);
-    if (costs && costs.buyUnitPriceUsd != null) {
-      const totalCost = costs.buyUnitPriceUsd + (costs.freightUnitUsd || 0);
-      sellPriceFormValues[li.rfq_line_item_id] = (totalCost * 1.185).toFixed(2);
+    const suggested = costs ? suggestSellPrice(costs.buyUnitPriceUsd, costs.freightUnitUsd) : null;
+    if (suggested != null) {
+      sellPriceFormValues[li.rfq_line_item_id] = suggested.toFixed(2);
     }
   });
 

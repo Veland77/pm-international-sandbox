@@ -96,6 +96,22 @@ function buildMargin(sellUnitPriceUsd, buyUnitPriceUsd, freightUnitUsd) {
   return { marginUnitUsd, marginPct };
 }
 
+// Suggested-default sell price for the quote create/edit form — a
+// starting point the sales rep can freely override per line, never a
+// decision made for them. Item cost and freight cost carry different
+// markups (freight is a pass-through cost with thinner margin potential
+// than the item itself), so they're marked up separately and summed,
+// not blended into a single flat rate.
+const ITEM_MARKUP_PCT = 30;
+const FREIGHT_MARKUP_PCT = 15;
+
+function suggestSellPrice(buyUnitPriceUsd, freightUnitUsd) {
+  if (buyUnitPriceUsd == null) return null;
+  const buyWithMarkup = buyUnitPriceUsd * (1 + ITEM_MARKUP_PCT / 100);
+  const freightWithMarkup = (freightUnitUsd || 0) * (1 + FREIGHT_MARKUP_PCT / 100);
+  return buyWithMarkup + freightWithMarkup;
+}
+
 // allLineItems: rows from getRfqLineItemsWithSourcing (sourced + unsourced)
 // lineCosts: Map from buildLineCosts
 // sellPriceFormValues: { [rfqLineItemId]: "123.45" } — string form input,
@@ -165,6 +181,7 @@ module.exports = {
   toSourcedLineItems,
   buildLineCosts,
   buildMargin,
+  suggestSellPrice,
   buildLineItemDisplayRows,
   buildTotals,
 };
