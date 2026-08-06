@@ -401,6 +401,31 @@ textarea:focus {
   margin-top: 1rem;
 }
 
+/* One block per vendor PO on the RFQ detail page's "Status on PM's Orders
+   to Suppliers" section — separated with a divider once there's more than
+   one vendor on the job. */
+
+.supplier-order-block {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.supplier-order-block:first-child {
+  margin-top: 0.75rem;
+  padding-top: 0;
+  border-top: none;
+}
+
+.supplier-order-block-header {
+  font-size: 1rem;
+}
+
+.supplier-order-block-po {
+  font-weight: 700;
+  font-size: 1.15em;
+}
+
 .milestone-timeline-label {
   font-weight: 600;
   font-size: 0.85rem;

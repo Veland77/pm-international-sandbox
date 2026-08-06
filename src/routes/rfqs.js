@@ -19,6 +19,7 @@ const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
 const { buildShipmentSizeEstimate } = require("../db/shipmentSizeCalc");
 const { buildLineItemDisplayRows, buildTotals, buildFreightLineItem, buildLandedLineItemRows } = require("../db/marginCalc");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
+const { getCustomerFacingAttachments } = require("../db/customerFacingAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
 const { getOrderForRfq, getShipmentsForOrder } = require("../db/orderQueries");
 const { getSelectedFreightQuotesForRfq } = require("../db/freightQuoteSelectionQueries");
@@ -97,6 +98,7 @@ router.get("/:id", (req, res) => {
   });
 
   const rfqAttachments = getRfqAttachments(db, rfq.id);
+  const customerFacingAttachments = getCustomerFacingAttachments(db, rfq.id);
   const supplierInquiries = getSupplierInquiriesForRfq(db, rfq.id);
   const supplierInquiryAttachmentsByInquiryId = new Map(
     supplierInquiries.map((inquiry) => [inquiry.id, getSupplierInquiryAttachments(db, inquiry.id)])
@@ -130,6 +132,7 @@ router.get("/:id", (req, res) => {
       shipmentSizeEstimate,
       supplierComparison,
       rfqAttachments,
+      customerFacingAttachments,
       supplierInquiries,
       supplierInquiryAttachmentsByInquiryId,
       freightInquiries,

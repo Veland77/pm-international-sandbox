@@ -1,9 +1,12 @@
 // src/views/rfqDetail.js
-// Renders a single RFQ's detail page: account/contact, line items, and linked quote if any.
+// Renders a single RFQ's detail page: order summary (incl. account info),
+// status on PM's orders to suppliers, line items, contact, quote, and the
+// sourcing/attachment sections below it.
 
 const { layout } = require("./layout");
 const { escapeHtml, formatDate, formatCurrency, formatNumber } = require("./htmlHelpers");
 const { rfqAttachmentsSection } = require("./rfqAttachmentsSection");
+const { customerFacingAttachmentsSection } = require("./customerFacingAttachmentsSection");
 const { supplierInquiryAttachmentsSection } = require("./supplierInquiryAttachmentsSection");
 const { compactMilestoneTimeline } = require("./milestoneTimeline");
 
@@ -70,6 +73,18 @@ function orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate, shipmentSiz
       <h2>Order Summary</h2>
       <div class="dashboard-stats">
         <div>
+          <div class="stat-label">Customer</div>
+          <div class="stat-value">${escapeHtml(rfq.account_name)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Industry / Status</div>
+          <div class="stat-value-small">${escapeHtml(rfq.industry_segment)} &middot; ${escapeHtml(rfq.account_status)}</div>
+        </div>
+        <div>
+          <div class="stat-label">Sales Rep</div>
+          <div class="stat-value-small">${escapeHtml(rfq.sales_rep_name)}</div>
+        </div>
+        <div>
           <div class="stat-label">Pipeline Stage</div>
           <div class="stat-value">${escapeHtml(rfq.pipeline_stage)}</div>
         </div>
@@ -130,30 +145,71 @@ function lineItemRows(rfqId, lineItems, displayRowsByLineItemId) {
     .join("");
 }
 
+// Derived, never stored — same formula used by the PO-to-vendor print
+// document (poPrintQueries.js) and the "Generate Purchase Order" flow.
+function vendorPoNumber(order, supplierId) {
+  return `${order.po_number}-S${supplierId}`;
+}
+
 // Shown directly beneath the Order Summary card. Before conversion, this is
 // just the "Convert to Order" call to action (only offered once the deal is
-// Won); afterward, it's a link to the order plus each shipment's compact
-// milestone strip.
-function orderSection(rfq, order, shipments) {
+// Won); afterward, it groups shipments by vendor (shipments.supplier_id —
+// see schema.js for why that's nullable) into one block per vendor PO, each
+// headed by the supplier name and its derived PO number, followed by that
+// vendor's own milestone timeline(s). A shipment with no supplier_id means
+// a user manually combined multiple vendors' lines into one physical
+// shipment — there's no single vendor PO number to derive for it, so it
+// falls into its own "Multiple / unassigned vendor" block instead.
+function supplierOrdersSection(rfq, order, shipments) {
   if (!order) {
     if (rfq.status !== "Won") return "";
     return `
     <div class="card">
-      <h2>Order</h2>
+      <h2>Status on PM's Orders to Suppliers</h2>
       <p>This RFQ has been won. Convert it to an order once the customer's PO is in hand.</p>
       <p><a class="btn btn-primary" href="/rfqs/${rfq.id}/convert-to-order">Convert to Order</a></p>
     </div>`;
   }
 
-  const timelines = shipments
-    .map((s) => compactMilestoneTimeline(s.milestones, { label: s.supplier_name || "Shipment" }))
+  const groups = [];
+  const groupByKey = new Map();
+  shipments.forEach((s) => {
+    const key = s.supplier_id == null ? "unassigned" : s.supplier_id;
+    if (!groupByKey.has(key)) {
+      const group = { supplierId: s.supplier_id, supplierName: s.supplier_name, shipments: [] };
+      groupByKey.set(key, group);
+      groups.push(group);
+    }
+    groupByKey.get(key).shipments.push(s);
+  });
+
+  const blocks = groups
+    .map((group) => {
+      const headerHtml =
+        group.supplierId == null
+          ? `<p class="supplier-order-block-header">Multiple / unassigned vendor</p>`
+          : `<p class="supplier-order-block-header">${escapeHtml(group.supplierName)} &mdash; <span class="supplier-order-block-po">${escapeHtml(vendorPoNumber(order, group.supplierId))}</span></p>`;
+      const timelines = group.shipments
+        .map((s) =>
+          compactMilestoneTimeline(
+            s.milestones,
+            group.shipments.length > 1 ? { label: s.tracking_number || "Shipment" } : {}
+          )
+        )
+        .join("");
+      return `
+      <div class="supplier-order-block">
+        ${headerHtml}
+        ${timelines}
+      </div>`;
+    })
     .join("");
 
   return `
     <div class="card">
-      <h2>Order</h2>
+      <h2>Status on PM's Orders to Suppliers</h2>
       <p><a href="/orders/${order.id}">${escapeHtml(order.po_number)}</a> &mdash; ${escapeHtml(order.pipeline_stage)}</p>
-      ${timelines}
+      ${blocks}
     </div>`;
 }
 
@@ -401,6 +457,7 @@ function rfqDetailPage({
   shipmentSizeEstimate = null,
   supplierComparison = [],
   rfqAttachments = [],
+  customerFacingAttachments = [],
   supplierInquiries = [],
   supplierInquiryAttachmentsByInquiryId = new Map(),
   freightInquiries = [],
@@ -417,20 +474,7 @@ function rfqDetailPage({
 
     ${orderSummaryBlock(rfq, quote, totals, estimatedArrivalDate, shipmentSizeEstimate)}
 
-    ${orderSection(rfq, order, shipments)}
-
-    <div class="card">
-      <h2>Account</h2>
-      <p>
-        ${escapeHtml(rfq.account_name)} (${escapeHtml(rfq.industry_segment)}, ${escapeHtml(rfq.account_region)}) &mdash; ${escapeHtml(rfq.account_status)}<br>
-        Sales Rep: ${escapeHtml(rfq.sales_rep_name)}
-      </p>
-      <h2>Contact</h2>
-      <p>
-        ${escapeHtml(rfq.contact_name)}, ${escapeHtml(rfq.contact_title)}<br>
-        ${escapeHtml(rfq.contact_email)} &middot; ${escapeHtml(rfq.contact_phone)}
-      </p>
-    </div>
+    ${supplierOrdersSection(rfq, order, shipments)}
 
     <div class="card">
       <h2>Line Items</h2>
@@ -446,6 +490,14 @@ function rfqDetailPage({
       </table>
     </div>
 
+    <div class="card">
+      <h2>Contact</h2>
+      <p>
+        ${escapeHtml(rfq.contact_name)}, ${escapeHtml(rfq.contact_title)}<br>
+        ${escapeHtml(rfq.contact_email)} &middot; ${escapeHtml(rfq.contact_phone)}
+      </p>
+    </div>
+
     ${quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourced, freightDisplayMode)}
 
     ${supplierInquiriesSection(rfq.id, supplierInquiries)}
@@ -455,6 +507,8 @@ function rfqDetailPage({
     ${supplierComparisonSection(supplierComparison)}
 
     ${rfqAttachmentsSection(rfq.id, rfqAttachments)}
+
+    ${customerFacingAttachmentsSection(rfq.id, customerFacingAttachments)}
 
     ${supplierInquiryAttachmentsSection(supplierInquiries, supplierInquiryAttachmentsByInquiryId)}
   `;

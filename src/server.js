@@ -28,6 +28,7 @@ app.use(express.static(path.join(__dirname, "public")));
 // GET /:id would otherwise swallow GET /rfqs/new (treating "new" as an id).
 app.use("/rfqs", require("./routes/rfqIntake"));
 app.use("/rfqs", require("./routes/rfqAttachments")); // customer attachments only — see src/db/schema.js
+app.use("/rfqs", require("./routes/customerFacingAttachments")); // customer-facing attachments only — see src/db/schema.js
 app.use("/rfqs", require("./routes/inquiryIntake"));
 app.use("/rfqs", require("./routes/freightIntake"));
 app.use("/rfqs", require("./routes/lineItemSourcing"));

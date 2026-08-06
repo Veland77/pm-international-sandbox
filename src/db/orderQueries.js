@@ -45,7 +45,7 @@ const ORDER_LINE_ITEMS_QUERY = `
 
 const SHIPMENTS_QUERY = `
   SELECT sh.id, sh.freight_forwarder, sh.tracking_number, sh.mode, sh.origin, sh.destination,
-         sh.ship_date, sh.eta, sh.pod_received,
+         sh.ship_date, sh.eta, sh.pod_received, sh.supplier_id,
          s.name AS supplier_name
   FROM shipments sh
   LEFT JOIN suppliers s ON s.id = sh.supplier_id

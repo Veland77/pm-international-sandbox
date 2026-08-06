@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 19;
+const SCHEMA_VERSION = 20;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -227,21 +227,40 @@ CREATE TABLE IF NOT EXISTS currency_rates (
   as_of_date TEXT NOT NULL
 );
 
--- Confidentiality boundary: customer attachments and supplier-facing
--- attachments are two separate tables, on purpose. PM has exclusivity
--- with some customers in certain markets, and suppliers must never see
--- which end customer an inquiry is for. Nothing in this codebase should
--- ever copy a row from one of these tables into the other.
+-- Confidentiality boundary: customer attachments, customer-facing
+-- attachments, and supplier-facing attachments are three separate tables,
+-- on purpose. PM has exclusivity with some customers in certain markets,
+-- and suppliers must never see which end customer an inquiry is for.
+-- Nothing in this codebase should ever copy a row from one of these
+-- tables into another.
 
--- The customer's original files. Never referenced from any supplier-facing
--- route or view.
+-- The customer's original files (received FROM the customer, or internal
+-- working files about them). Never referenced from any supplier-facing or
+-- customer-facing route or view.
 CREATE TABLE IF NOT EXISTS rfq_attachments (
   id INTEGER PRIMARY KEY,
   rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
   original_filename TEXT NOT NULL,
   stored_filename TEXT NOT NULL UNIQUE,  -- randomized on disk; original_filename is for display/download only
   uploaded_date TEXT NOT NULL,
-  mime_type TEXT NOT NULL
+  mime_type TEXT NOT NULL,
+  description TEXT  -- optional free-text label, e.g. "Flange detail drawing"
+);
+
+-- Files PM wants to SHARE with the customer — the opposite direction from
+-- rfq_attachments (received/internal). Kept as its own table, not a flag
+-- on rfq_attachments, for the same confidentiality-separation reason as
+-- supplier_inquiry_attachments: a future customer portal will eventually
+-- surface exactly this table's rows directly to the customer, and nothing
+-- from rfq_attachments should ever be reachable that way by accident.
+CREATE TABLE IF NOT EXISTS customer_facing_attachments (
+  id INTEGER PRIMARY KEY,
+  rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
+  original_filename TEXT NOT NULL,
+  stored_filename TEXT NOT NULL UNIQUE,
+  uploaded_date TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  description TEXT
 );
 
 -- Files manually uploaded when preparing an outbound inquiry to a vendor.

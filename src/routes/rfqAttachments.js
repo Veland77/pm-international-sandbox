@@ -1,8 +1,9 @@
 // src/routes/rfqAttachments.js
 // Upload/download for CUSTOMER attachments only. Deliberately not shared
-// with src/routes/supplierInquiryAttachments.js — see src/db/schema.js for
-// why the two attachment systems stay fully separate. Never import
-// anything from the supplier-inquiry attachment modules here.
+// with src/routes/supplierInquiryAttachments.js or
+// src/routes/customerFacingAttachments.js — see src/db/schema.js for why
+// the three attachment systems stay fully separate. Never import anything
+// from those modules here.
 
 const express = require("express");
 const multer = require("multer");
@@ -27,6 +28,7 @@ router.post("/:id/attachments", upload.single("file"), (req, res) => {
     originalFilename: req.file.originalname,
     storedFilename,
     mimeType: req.file.mimetype,
+    description: (req.body.description || "").trim() || null,
   });
 
   res.redirect(`/rfqs/${rfqId}`);

@@ -64,6 +64,21 @@ test("createRfqAttachment stores a customer attachment retrievable by rfq id", (
   const attachments = getRfqAttachments(db, rfqId);
   assert.equal(attachments.length, 1);
   assert.equal(attachments[0].original_filename, "customer-drawing.pdf");
+  assert.equal(attachments[0].description, null);
+});
+
+test("createRfqAttachment stores an optional description", () => {
+  createRfqAttachment(db, {
+    rfqId,
+    originalFilename: "customer-drawing-rev2.pdf",
+    storedFilename: "abc124.pdf",
+    mimeType: "application/pdf",
+    description: "Flange detail drawing, revision 2",
+  });
+
+  const attachments = getRfqAttachments(db, rfqId);
+  const withDescription = attachments.find((a) => a.original_filename === "customer-drawing-rev2.pdf");
+  assert.equal(withDescription.description, "Flange detail drawing, revision 2");
 });
 
 test("createSupplierInquiryAttachment stores a supplier attachment retrievable by inquiry id", () => {
@@ -88,7 +103,7 @@ test("the two attachment tables are fully independent — a customer file never 
 
   const rfqAttachmentRowCount = db.prepare("SELECT count(*) as n FROM rfq_attachments").get().n;
   const supplierAttachmentRowCount = db.prepare("SELECT count(*) as n FROM supplier_inquiry_attachments").get().n;
-  assert.equal(rfqAttachmentRowCount, 1);
+  assert.equal(rfqAttachmentRowCount, 2);
   assert.equal(supplierAttachmentRowCount, 1);
 });
 
