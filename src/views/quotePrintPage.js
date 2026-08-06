@@ -23,7 +23,7 @@ function formatShipmentSize(estimate) {
 
   let text = `${formatNumber(estimate.totalWeightKg, 1)} kg`;
   if (estimate.dimensionsText) {
-    text += ` — box/pallet size (per vendor quote): ${estimate.dimensionsText}`;
+    text += ` — box/pallet size: ${estimate.dimensionsText}`;
   }
   if (estimate.sourcedCount < estimate.totalCount) {
     const missing = estimate.totalCount - estimate.sourcedCount;
