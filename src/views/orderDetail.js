@@ -50,7 +50,20 @@ function shipmentSection(shipment) {
     </div>`;
 }
 
-function orderDetailPage({ order, lineItems, shipments }) {
+function vendorPoLinks(orderId, vendors) {
+  if (!vendors.length) return "";
+  const links = vendors
+    .map((v) => `<a class="btn btn-secondary" href="/orders/${orderId}/po/${v.supplier_id}/print">Print PO — ${escapeHtml(v.supplier_name)}</a>`)
+    .join(" ");
+  return `
+    <div class="card">
+      <h2>Vendor Purchase Orders</h2>
+      <p>One PO document per vendor sourced on this order.</p>
+      <p>${links}</p>
+    </div>`;
+}
+
+function orderDetailPage({ order, lineItems, shipments, vendors = [] }) {
   const body = `
     <a class="back-link" href="/rfqs/${order.rfq_id}">&larr; Back to ${escapeHtml(order.rfq_number)}</a>
     <h1>${escapeHtml(order.po_number)} — ${escapeHtml(order.account_name)}</h1>
@@ -64,6 +77,8 @@ function orderDetailPage({ order, lineItems, shipments }) {
         Total Value: ${escapeHtml(formatCurrency(order.total_value))}
       </p>
     </div>
+
+    ${vendorPoLinks(order.id, vendors)}
 
     <div class="card">
       <h2>Order Line Items</h2>
