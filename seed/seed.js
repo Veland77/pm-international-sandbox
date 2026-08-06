@@ -656,6 +656,143 @@ const seedTransaction = db.transaction(() => {
     daysFromNow(-16)
   );
 
+  // --- Seed one more RFQ: fully sourced (vendor + freight both selected)
+  // but deliberately NOT yet quoted to the customer. Every RFQ seeded
+  // above through the main loop gets a quote the moment it's created (see
+  // "status !== 'New'" above), so none of them can ever reach the Create
+  // Quote screen — this one exists specifically so that screen (and the
+  // sell-price markup split) is reachable and clickable, not just
+  // unit-tested. Kept outside the main loop rather than added to
+  // fakeAccounts, since going through that loop would auto-create a quote
+  // for any status other than "New."
+  const meridianAccountId = insertAccount.run("Meridian Fabrication Works", "Marine", "US", "Active").lastInsertRowid;
+
+  const meridianContactId = insertContact.run(
+    meridianAccountId,
+    "Derek Holt",
+    "Procurement Manager",
+    "d.holt@meridianfab-example.com",
+    "+1 555 010 0007"
+  ).lastInsertRowid;
+
+  const meridianRfqNumber = `RFQ-${rfqCounter++}`;
+  const meridianRfqId = insertRfq.run(
+    meridianRfqNumber,
+    meridianAccountId,
+    meridianContactId,
+    userIds[0],
+    "Meridian Pipework Package",
+    "Quoting",
+    "Sourcing",
+    daysFromNow(-5),
+    daysFromNow(16),
+    daysFromNow(50)
+  ).lastInsertRowid;
+
+  insertActivity.run(
+    meridianRfqId,
+    meridianAccountId,
+    userIds[0],
+    "Status Change",
+    `RFQ ${meridianRfqNumber} created and assigned.`,
+    daysFromNow(-5)
+  );
+
+  // Titanium fastener set + Moly ball valve — matches Hanul Precision
+  // Metals' "Valves and fasteners" specialty below.
+  const meridianCatalog = [catalogLines[2], catalogLines[3]];
+  const meridianQuantities = [10, 20];
+  const meridianLineItems = meridianCatalog.map((c, j) => {
+    const lineId = insertRfqLine.run(
+      meridianRfqId,
+      materialIdByName[c.material],
+      productFormIdByName[c.form],
+      standardIdByCode[c.standard],
+      c.description,
+      meridianQuantities[j],
+      c.unit,
+      c.length_m
+    ).lastInsertRowid;
+
+    const itemNumber = buildItemNumber({
+      formCode: formCodeForLineItem(c.form, c.description),
+      materialCode: materialCodeForName(c.material),
+      year: itemNumberYear,
+      sequence: itemNumberSequence++,
+    });
+    insertItemNumber.run(
+      itemNumber,
+      lineId,
+      productFormIdByName[c.form],
+      materialIdByName[c.material],
+      c.description,
+      "Active",
+      daysFromNow(-5)
+    );
+
+    return { id: lineId, quantity: meridianQuantities[j] };
+  });
+
+  // Reuses the same seeding helper the main loop uses — single vendor
+  // (Hanul Precision Metals, South Korea), both lines Selected, no
+  // customer quote passed in (quoteId: null), so no customer_quote_options
+  // row gets created either.
+  seedSuppliersForRfq(
+    db,
+    supplierIds,
+    {
+      rfqId: meridianRfqId,
+      lineItems: meridianLineItems,
+      quoteId: null,
+      dates: {
+        sentDate: daysFromNow(-4),
+        receivedDate: daysFromNow(-2),
+        validUntil: daysFromNow(55),
+        selectedDate: daysFromNow(-1),
+      },
+      nextInquiryNumber,
+    },
+    [
+      {
+        supplierIndex: 2,
+        outreachStatus: "Quoted",
+        availability: "In Stock",
+        leadTimeDays: 10,
+        unitPrices: [95000, 145000],
+        currency: "KRW",
+        estimatedTransitDays: 20,
+      },
+    ],
+    [2, 2]
+  );
+
+  const hanulSupplierId = supplierIds[2]; // Hanul Precision Metals — see supplierFixtures.js SUPPLIERS[2]
+
+  const meridianFreightInquiryId = insertFreightInquiry.run(
+    nextFrqNumber(),
+    meridianRfqId,
+    freightForwarderIdByName["Pacific Rim Ocean Carriers"],
+    daysFromNow(-3),
+    "Quoted"
+  ).lastInsertRowid;
+
+  meridianLineItems.forEach((li) => {
+    insertFreightInquiryLine.run(meridianFreightInquiryId, li.id);
+  });
+
+  const meridianFreightQuoteId = insertFreightQuote.run(
+    meridianFreightInquiryId,
+    "PRO-Q-2201",
+    daysFromNow(-2),
+    520,
+    "USD",
+    20,
+    daysFromNow(25),
+    "Ocean freight — Busan to Lakeland, standard transit"
+  ).lastInsertRowid;
+
+  insertFreightQuoteSelection.run(meridianRfqId, hanulSupplierId, meridianFreightQuoteId, daysFromNow(-1));
+
   setSchemaVersion.run(SCHEMA_VERSION);
 });
 
