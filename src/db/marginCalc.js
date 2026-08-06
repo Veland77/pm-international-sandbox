@@ -263,6 +263,49 @@ function buildTotals(displayRows) {
   return { totalSellUsd, totalBuyUsd, totalFreightUsd, marginUsd, marginPct };
 }
 
+// Alternate view of the same saved quote: freight folded back into each
+// item's own buy/sell/margin instead of shown as its own line — never a
+// second calculation, just a different split of the same stored numbers
+// (item sell prices, the freight line's own buy/sell), so switching
+// between this and the separate-line view is lossless and idempotent.
+// Each item absorbs the same weight-based share of the freight line's
+// sell price that it already carries of its buy price (freightUnitUsd,
+// from buildLineCosts) — the same allocation, just applied to the sell
+// side too instead of only the cost side. Quote Totals (Total Sell/Buy/
+// Margin) are identical either way; only the per-item breakdown differs.
+// displayRows: from buildLineItemDisplayRows
+// freightRow: from buildFreightLineItem
+function buildLandedLineItemRows(displayRows, freightRow) {
+  const freightBuyTotal = freightRow.buyUnitPriceUsd;
+  const freightSellTotal = freightRow.sellUnitPriceUsd;
+
+  return displayRows.map((row) => {
+    if (!row.sourced) return row;
+
+    const freightShare = freightBuyTotal > 0 && row.freightUnitUsd != null ? row.freightUnitUsd / freightBuyTotal : 0;
+    const landedFreightSellPerUnit = freightSellTotal != null ? freightSellTotal * freightShare : null;
+
+    const landedBuyUnitPriceUsd = row.buyUnitPriceUsd == null ? null : row.buyUnitPriceUsd + (row.freightUnitUsd || 0);
+    const landedSellUnitPriceUsd =
+      row.sellUnitPriceUsd == null || landedFreightSellPerUnit == null
+        ? row.sellUnitPriceUsd
+        : row.sellUnitPriceUsd + landedFreightSellPerUnit;
+
+    const { marginUnitUsd, marginPct } =
+      landedSellUnitPriceUsd != null
+        ? buildMargin(landedSellUnitPriceUsd, landedBuyUnitPriceUsd, null)
+        : { marginUnitUsd: null, marginPct: null };
+
+    return {
+      ...row,
+      buyUnitPriceUsd: landedBuyUnitPriceUsd,
+      sellUnitPriceUsd: landedSellUnitPriceUsd,
+      marginUnitUsd,
+      marginPct,
+    };
+  });
+}
+
 module.exports = {
   toSourcedLineItems,
   buildLineCosts,
@@ -273,5 +316,6 @@ module.exports = {
   buildFreightLineTotal,
   buildFreightLineItem,
   buildLineItemDisplayRows,
+  buildLandedLineItemRows,
   buildTotals,
 };

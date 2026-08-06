@@ -16,7 +16,7 @@ const {
 } = require("../db/rfqQueries");
 const { estimateArrivalDate, toUsd } = require("../db/orderSummary");
 const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
-const { buildLineItemDisplayRows, buildTotals, buildFreightLineItem } = require("../db/marginCalc");
+const { buildLineItemDisplayRows, buildTotals, buildFreightLineItem, buildLandedLineItemRows } = require("../db/marginCalc");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
 const { getOrderForRfq, getShipmentsForOrder } = require("../db/orderQueries");
@@ -62,6 +62,15 @@ router.get("/:id", (req, res) => {
   const totals = buildTotals([...displayRows, freightRow]);
   const estimatedArrivalDate = estimateArrivalDate(allLineItems);
   const displayRowsByLineItemId = new Map(displayRows.map((row) => [row.rfqLineItemId, row]));
+
+  // View-only toggle for the Quote section specifically (never the Line
+  // Items table or Order Summary above, which always stay in the default,
+  // freight-exclusive shape) — not persisted anywhere, so it's always
+  // exactly reconstructible from the same stored numbers either way; see
+  // marginCalc.js's buildLandedLineItemRows for why that's lossless.
+  const freightDisplayMode = req.query.freight === "included" ? "included" : "separate";
+  const quoteDisplayRows =
+    freightDisplayMode === "included" ? buildLandedLineItemRows(displayRows, freightRow) : displayRows;
 
   // Match each Supplier Comparison row to a per-line freight cost only
   // when it's the EXACT vendor-quote-line actually selected for that
@@ -110,7 +119,9 @@ router.get("/:id", (req, res) => {
       lineItems,
       quote,
       displayRows,
+      quoteDisplayRows,
       freightRow,
+      freightDisplayMode,
       totals,
       anySourced,
       estimatedArrivalDate,

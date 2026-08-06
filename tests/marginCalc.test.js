@@ -14,6 +14,7 @@ const {
   buildFreightLineTotal,
   buildFreightLineItem,
   buildLineItemDisplayRows,
+  buildLandedLineItemRows,
   buildTotals,
 } = require("../src/db/marginCalc");
 
@@ -283,4 +284,63 @@ test("buildFreightLineItem accepts a comma-decimal sell price, same as an item l
   const lineCosts = new Map([[1, { buyUnitPriceUsd: 69.22, freightUnitUsd: 14.86 }]]);
   const row = buildFreightLineItem(allLineItems, lineCosts, "175,00");
   assert.equal(row.sellUnitPriceUsd, 175);
+});
+
+test("buildLandedLineItemRows folds each item's weight-share of freight buy/sell into its own buy/sell, matching totals with the separate-line view", () => {
+  // A (10kg x 1 = 10kg) and B (20kg x 1 = 20kg) — A carries 1/3 of the
+  // $300 freight buy, B carries 2/3, same shares used for the freight
+  // line's $450 sell price.
+  const displayRows = [
+    { rfqLineItemId: "A", sourced: true, quantity: 1, buyUnitPriceUsd: 80, freightUnitUsd: 100, sellUnitPriceUsd: 130, marginUnitUsd: 50, marginPct: 38.46 },
+    { rfqLineItemId: "B", sourced: true, quantity: 1, buyUnitPriceUsd: 60, freightUnitUsd: 200, sellUnitPriceUsd: 90, marginUnitUsd: 30, marginPct: 33.33 },
+  ];
+  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 300, sellUnitPriceUsd: 450, quantity: 1 };
+
+  const landed = buildLandedLineItemRows(displayRows, freightRow);
+  const a = landed.find((r) => r.rfqLineItemId === "A");
+  const b = landed.find((r) => r.rfqLineItemId === "B");
+
+  assert.equal(a.buyUnitPriceUsd, 80 + 100); // item buy + its own freight share
+  assert.equal(a.sellUnitPriceUsd, 130 + 450 * (100 / 300)); // + its 1/3 share of freight sell
+  assert.equal(a.marginUnitUsd, a.sellUnitPriceUsd - a.buyUnitPriceUsd);
+
+  assert.equal(b.buyUnitPriceUsd, 60 + 200);
+  assert.equal(b.sellUnitPriceUsd, 90 + 450 * (200 / 300));
+  assert.equal(b.marginUnitUsd, b.sellUnitPriceUsd - b.buyUnitPriceUsd);
+
+  // Same total sell/buy/margin as the separate-line view — this is the
+  // whole point: a different split of the same numbers, not new math.
+  const landedTotalSell = a.sellUnitPriceUsd + b.sellUnitPriceUsd;
+  const landedTotalBuy = a.buyUnitPriceUsd + b.buyUnitPriceUsd;
+  const separateTotalSell = 130 + 90 + 450;
+  const separateTotalBuy = 80 + 60 + 300;
+  assert.equal(landedTotalSell, separateTotalSell);
+  assert.equal(landedTotalBuy, separateTotalBuy);
+});
+
+test("buildLandedLineItemRows leaves an unsourced row untouched", () => {
+  const displayRows = [{ rfqLineItemId: "X", sourced: false, description: "Unsourced" }];
+  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 100, sellUnitPriceUsd: 115, quantity: 1 };
+  const landed = buildLandedLineItemRows(displayRows, freightRow);
+  assert.deepEqual(landed[0], displayRows[0]);
+});
+
+test("buildLandedLineItemRows leaves an item with no freight arranged unchanged — nothing to fold in", () => {
+  const displayRows = [
+    { rfqLineItemId: "A", sourced: true, quantity: 1, buyUnitPriceUsd: 80, freightUnitUsd: null, sellUnitPriceUsd: 130 },
+  ];
+  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 0, sellUnitPriceUsd: 0, quantity: 1 };
+  const landed = buildLandedLineItemRows(displayRows, freightRow);
+  assert.equal(landed[0].buyUnitPriceUsd, 80);
+  assert.equal(landed[0].sellUnitPriceUsd, 130);
+});
+
+test("buildLandedLineItemRows falls back to the item's own sell price when the freight line has no saved sell price yet", () => {
+  const displayRows = [
+    { rfqLineItemId: "A", sourced: true, quantity: 1, buyUnitPriceUsd: 80, freightUnitUsd: 20, sellUnitPriceUsd: 130 },
+  ];
+  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 20, sellUnitPriceUsd: null, quantity: 1 };
+  const landed = buildLandedLineItemRows(displayRows, freightRow);
+  assert.equal(landed[0].buyUnitPriceUsd, 100); // buy price still folds in, it's never null
+  assert.equal(landed[0].sellUnitPriceUsd, 130); // sell falls back — nothing to allocate yet
 });

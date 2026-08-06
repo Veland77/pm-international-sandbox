@@ -236,7 +236,24 @@ function supplierComparisonSection(rows) {
     </div>`;
 }
 
-function quoteSection(rfq, quote, displayRows, freightRow, totals, anySourced) {
+// freightDisplayMode: "separate" (default, freight is its own row) or
+// "included" (freight folded into each item's own buy/sell/margin, no
+// separate row) — a pure view toggle, not saved anywhere. quoteDisplayRows
+// is already the right shape for whichever mode is active (see rfqs.js:
+// buildLandedLineItemRows for "included", plain displayRows otherwise) —
+// this function just renders whatever it's given, same as before.
+function freightViewToggle(rfqId, freightDisplayMode) {
+  const separateActive = freightDisplayMode !== "included";
+  return `
+    <p>
+      View freight:
+      <a href="/rfqs/${rfqId}?freight=separate"${separateActive ? ' style="font-weight:700;"' : ""}>As its own line</a>
+      &middot;
+      <a href="/rfqs/${rfqId}?freight=included"${!separateActive ? ' style="font-weight:700;"' : ""}>Included in items</a>
+    </p>`;
+}
+
+function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourced, freightDisplayMode) {
   if (!quote) {
     if (!anySourced) {
       return '<div class="card"><h2>Quote</h2><p>No quote yet — select a vendor for at least one line item first.</p></div>';
@@ -249,7 +266,9 @@ function quoteSection(rfq, quote, displayRows, freightRow, totals, anySourced) {
     </div>`;
   }
 
-  const quoteRows = displayRows
+  const showFreightRow = freightDisplayMode !== "included";
+
+  const quoteRows = quoteDisplayRows
     .map((row) => {
       if (!row.sourced) {
         return `
@@ -278,8 +297,10 @@ function quoteSection(rfq, quote, displayRows, freightRow, totals, anySourced) {
   // Same "only shows if actually saved" rule as an item line — a quote
   // created before the Freight line existed has no freight_sell_price_usd
   // yet, so nothing renders here for it rather than a misleading blank row.
+  // Also skipped entirely in "included" mode, where its buy/sell has
+  // already been folded into the item rows above instead.
   const freightRowHtml =
-    freightRow.sellUnitPriceUsd == null
+    !showFreightRow || freightRow.sellUnitPriceUsd == null
       ? ""
       : `
     <tr>
@@ -309,6 +330,7 @@ function quoteSection(rfq, quote, displayRows, freightRow, totals, anySourced) {
     <div class="card">
       <h2>Quote ${escapeHtml(quote.quote_number)} (v${escapeHtml(quote.version)})</h2>
       <p>Status: ${escapeHtml(quote.status)} &middot; Created: ${escapeHtml(formatDate(quote.created_date))} &middot; Valid until: ${escapeHtml(formatDate(quote.valid_until))}</p>
+      ${freightViewToggle(rfq.id, freightDisplayMode)}
       <table>
         <thead>
           <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Margin</th></tr>
@@ -325,7 +347,9 @@ function rfqDetailPage({
   lineItems,
   quote,
   displayRows = [],
+  quoteDisplayRows = [],
   freightRow = null,
+  freightDisplayMode = "separate",
   totals = null,
   anySourced = false,
   estimatedArrivalDate = null,
@@ -376,7 +400,7 @@ function rfqDetailPage({
       </table>
     </div>
 
-    ${quoteSection(rfq, quote, displayRows, freightRow, totals, anySourced)}
+    ${quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourced, freightDisplayMode)}
 
     ${supplierInquiriesSection(rfq.id, supplierInquiries)}
 
