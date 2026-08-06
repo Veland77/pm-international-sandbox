@@ -29,10 +29,7 @@ function dateField(labelText, name, value) {
   return `
     <label class="field">
       <span class="field-label">${escapeHtml(labelText)}</span>
-      <span class="date-field-wrapper">
-        <input type="date" name="${name}" value="${escapeHtml(value || "")}" required>
-        <span class="date-field-display">Select a date</span>
-      </span>
+      <input type="date" name="${name}" value="${escapeHtml(value || "")}" required>
     </label>`;
 }
 

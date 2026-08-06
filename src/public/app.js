@@ -1,34 +1,18 @@
 // src/public/app.js
 // Shared vanilla JS behaviors, loaded on every page: custom file inputs,
-// English-locked date-field display, auto-growing textareas, and live
-// inline validation with hand-written English messages (not the browser's
-// native validationMessage, which is itself locale-dependent). Exposed on
-// window.PMSandbox so page-specific scripts (e.g. rfqIntake.js) can wire
-// the same behaviors onto elements they add dynamically.
+// auto-growing textareas, and live inline validation with hand-written
+// English messages (not the browser's native validationMessage, which is
+// itself locale-dependent). Exposed on window.PMSandbox so page-specific
+// scripts (e.g. rfqIntake.js) can wire the same behaviors onto elements
+// they add dynamically.
+//
+// Date inputs are plain native <input type="date"> everywhere on the site
+// — no custom wrapper/formatting. An earlier custom invisible-overlay
+// version (formatEnglishDate/wireDateField, .date-field-wrapper) was
+// removed after it made the New RFQ form's date fields unreliably
+// clickable; every date field uses the one plain component now.
 
 (function () {
-  const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-  function formatEnglishDate(isoString) {
-    if (!isoString) return "Select a date";
-    const [year, month, day] = isoString.split("-").map(Number);
-    if (!year || !month || !day) return "Select a date";
-    return `${day} ${MONTH_NAMES[month - 1]} ${year}`;
-  }
-
-  function wireDateField(wrapper) {
-    const input = wrapper.querySelector('input[type="date"]');
-    const display = wrapper.querySelector(".date-field-display");
-    if (!input || !display) return;
-
-    const update = () => {
-      display.textContent = formatEnglishDate(input.value);
-    };
-    update();
-    input.addEventListener("change", update);
-    input.addEventListener("input", update);
-  }
-
   function wireFileInput(wrapper) {
     const input = wrapper.querySelector(".file-input-native");
     const filenameSpan = wrapper.querySelector(".file-input-filename");
@@ -84,7 +68,6 @@
   }
 
   function wireAll(root) {
-    root.querySelectorAll(".date-field-wrapper").forEach(wireDateField);
     root.querySelectorAll(".file-input").forEach(wireFileInput);
     root.querySelectorAll("textarea.auto-grow").forEach(wireAutoGrowTextarea);
     root.querySelectorAll("input[required], select[required], textarea[required]").forEach(wireLiveValidation);
@@ -93,8 +76,6 @@
   document.addEventListener("DOMContentLoaded", () => wireAll(document));
 
   window.PMSandbox = {
-    formatEnglishDate,
-    wireDateField,
     wireFileInput,
     wireAutoGrowTextarea,
     wireLiveValidation,

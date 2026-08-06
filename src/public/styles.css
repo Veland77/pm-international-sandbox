@@ -351,42 +351,6 @@ textarea:focus {
   font-size: 0.9rem;
 }
 
-/* Custom date field — the native <input type="date"> stays fully
-   functional (calendar picker, ISO value submitted) but is made
-   invisible; a JS-formatted "11 Sep 2026"-style label sits underneath so
-   the browser's own locale formatting (e.g. DD.MM.YYYY) never shows. */
-
-.date-field-wrapper {
-  /* Must be block-level, not the <span> default of inline — an inline
-     element containing a block child (.date-field-display) and an
-     absolutely-positioned inset:0 overlay (the real <input>) doesn't get a
-     well-defined box in every browser, which can leave the invisible input
-     mis-sized/mis-positioned relative to what's actually shown, so clicks
-     land on nothing even though the field still looks normal. */
-  display: block;
-  position: relative;
-}
-
-.date-field-wrapper input[type="date"] {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
-  width: 100%;
-  height: 100%;
-}
-
-.date-field-display {
-  display: block;
-  padding: 0.5rem 0.6rem;
-  border: 1px solid var(--color-border);
-  border-radius: 6px;
-  background: #fff;
-  pointer-events: none;
-  font-size: 0.95rem;
-  min-height: 1.4em;
-}
-
 /* Milestone edit rows — one per stage on the Expediting workscreen, each
    with its own small inline-editable form. */
 
