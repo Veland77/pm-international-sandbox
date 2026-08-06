@@ -50,20 +50,41 @@ function shipmentSection(shipment) {
     </div>`;
 }
 
-function vendorPoLinks(orderId, vendors) {
+// Not yet generated: a real form/button (POST), so issuing a PO is a
+// deliberate click, not a link you could bookmark or share your way past.
+// Already generated: the PO number and issued date, plus a view/print
+// link — no way to re-click Generate from here once it's been issued.
+function vendorPoRow(orderId, poNumber, vendor, issuedDate) {
+  if (!issuedDate) {
+    return `
+    <form method="POST" action="/orders/${orderId}/po/${vendor.supplier_id}/generate" style="display:inline;">
+      <button type="submit" class="btn btn-primary">Generate Purchase Order — ${escapeHtml(vendor.supplier_name)}</button>
+    </form>`;
+  }
+  return `
+    <p>
+      <strong>${escapeHtml(poNumber)}</strong> — Generated ${escapeHtml(formatDate(issuedDate))}
+      (${escapeHtml(vendor.supplier_name)})
+      &middot; <a href="/orders/${orderId}/po/${vendor.supplier_id}/print">View / Print</a>
+    </p>`;
+}
+
+function vendorPoLinks(order, vendors, issuancesBySupplierId) {
   if (!vendors.length) return "";
-  const links = vendors
-    .map((v) => `<a class="btn btn-secondary" href="/orders/${orderId}/po/${v.supplier_id}/print">Print PO — ${escapeHtml(v.supplier_name)}</a>`)
-    .join(" ");
+  const rows = vendors
+    .map((v) =>
+      vendorPoRow(order.id, `${order.po_number}-S${v.supplier_id}`, v, issuancesBySupplierId.get(v.supplier_id))
+    )
+    .join("");
   return `
     <div class="card">
       <h2>Vendor Purchase Orders</h2>
       <p>One PO document per vendor sourced on this order.</p>
-      <p>${links}</p>
+      ${rows}
     </div>`;
 }
 
-function orderDetailPage({ order, lineItems, shipments, vendors = [] }) {
+function orderDetailPage({ order, lineItems, shipments, vendors = [], issuancesBySupplierId = new Map() }) {
   const body = `
     <a class="back-link" href="/rfqs/${order.rfq_id}">&larr; Back to ${escapeHtml(order.rfq_number)}</a>
     <h1>${escapeHtml(order.po_number)} — ${escapeHtml(order.account_name)}</h1>
@@ -78,7 +99,7 @@ function orderDetailPage({ order, lineItems, shipments, vendors = [] }) {
       </p>
     </div>
 
-    ${vendorPoLinks(order.id, vendors)}
+    ${vendorPoLinks(order, vendors, issuancesBySupplierId)}
 
     <div class="card">
       <h2>Order Line Items</h2>

@@ -9,6 +9,12 @@
 // freightInquiryPrintPage.js already uses. Kept standalone (own inline
 // styles, not linking styles.css) so it stays self-contained and
 // reliable to print/PDF regardless of network state.
+//
+// Only reachable after "Generate Purchase Order" has actually been
+// clicked (see src/routes/orders.js) — issuedDate comes from that real,
+// recorded action, not from when this page happens to be rendered/
+// re-rendered (which could be any later time the vendor's contact needs
+// another copy).
 
 const { escapeHtml, formatDate, formatCurrency } = require("./htmlHelpers");
 
@@ -28,7 +34,7 @@ function lineItemRows(lineItems) {
     .join("");
 }
 
-function poPrintPage({ poNumber, orderDate, supplier, lineItems }) {
+function poPrintPage({ poNumber, orderDate, issuedDate, supplier, lineItems }) {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,6 +72,7 @@ function poPrintPage({ poNumber, orderDate, supplier, lineItems }) {
     <div class="meta">
       <p><strong>PO #:</strong> ${escapeHtml(poNumber)}</p>
       <p><strong>Order Date:</strong> ${escapeHtml(formatDate(orderDate))}</p>
+      <p><strong>Issued:</strong> ${escapeHtml(formatDate(issuedDate))}</p>
       <p><strong>Vendor:</strong> ${escapeHtml(supplier.supplier_name)}, ${escapeHtml(supplier.supplier_country)}</p>
     </div>
   </header>

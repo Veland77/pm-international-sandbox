@@ -11,6 +11,7 @@ const {
   getSupplierForPo,
   getPoLineItemsForVendor,
 } = require("../db/poPrintQueries");
+const { getVendorPoIssuance, getVendorPoIssuancesForOrder, createVendorPoIssuance } = require("../db/vendorPoQueries");
 const { getCurrencyRates } = require("../db/rfqQueries");
 const { toUsd } = require("../db/orderSummary");
 const { orderDetailPage } = require("../views/orderDetail");
@@ -35,8 +36,30 @@ router.get("/:id", (req, res) => {
 
   const shipments = getShipmentsForOrder(db, order.id);
   const vendors = getVendorsForOrder(db, order.id);
+  const issuancesBySupplierId = getVendorPoIssuancesForOrder(db, order.id);
 
-  res.send(orderDetailPage({ order, lineItems, shipments, vendors }));
+  res.send(orderDetailPage({ order, lineItems, shipments, vendors, issuancesBySupplierId }));
+});
+
+// The deliberate action that actually issues a vendor's PO — the print
+// document itself stays fully derived and is never stored (see
+// poPrintQueries.js); this just records that it happened and when.
+// Idempotent: generating the same vendor's PO twice is a no-op (see
+// vendorPoQueries.js's INSERT OR IGNORE), not a duplicate or an error.
+router.post("/:id/po/:supplierId/generate", (req, res) => {
+  const db = getDb();
+  const order = getOrderById(db, req.params.id);
+  if (!order) {
+    return res.status(404).send("Order not found");
+  }
+
+  createVendorPoIssuance(db, {
+    orderId: order.id,
+    supplierId: req.params.supplierId,
+    issuedDate: new Date().toISOString().slice(0, 10),
+  });
+
+  res.redirect(`/orders/${order.id}`);
 });
 
 // Customer-facing data never enters this route at all — see
@@ -44,11 +67,22 @@ router.get("/:id", (req, res) => {
 // it. "PO number" here means PM's own reference to this vendor, derived
 // from the order's own po_number plus the vendor's id, since one order
 // can source from several vendors and each gets its own document.
+//
+// Only reachable once "Generate Purchase Order" has actually been
+// clicked for this vendor — redirects back to the order page otherwise,
+// same guard pattern as the quote-edit route redirecting away once a
+// quote isn't a Draft. Without this, "Generate" would just be a UI
+// suggestion rather than the deliberate action it's meant to be.
 router.get("/:id/po/:supplierId/print", (req, res) => {
   const db = getDb();
   const orderHeader = getOrderHeaderForPo(db, req.params.id);
   if (!orderHeader) {
     return res.status(404).send("Order not found");
+  }
+
+  const issuance = getVendorPoIssuance(db, orderHeader.order_id, req.params.supplierId);
+  if (!issuance) {
+    return res.redirect(`/orders/${orderHeader.order_id}`);
   }
 
   const supplier = getSupplierForPo(db, req.params.supplierId);
@@ -63,6 +97,7 @@ router.get("/:id/po/:supplierId/print", (req, res) => {
     poPrintPage({
       poNumber,
       orderDate: orderHeader.order_date,
+      issuedDate: issuance.issued_date,
       supplier,
       lineItems,
     })

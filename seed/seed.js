@@ -263,6 +263,7 @@ const seedTransaction = db.transaction(() => {
     DELETE FROM expediting_log;
     DELETE FROM shipment_milestones;
     DELETE FROM shipment_line_items;
+    DELETE FROM vendor_po_issuances;
     DELETE FROM order_line_items;
     DELETE FROM shipments;
     DELETE FROM freight_inquiry_line_items;
