@@ -35,19 +35,22 @@ function costMarginCells(row, { showTotalSell = false } = {}) {
       <td class="${marginClass(row.marginUnitUsd)}">${escapeHtml(marginText)}</td>`;
 }
 
-// "700 kg — 120 x 15 x 15 cm per unit (2 of 3 line items — 1 not yet
-// sourced)" — dimensions only included when every sourced line agrees on
-// box size (see shipmentSizeCalc.js), the partial-sourcing note only
-// when some line items still have no vendor selected. A slot for an
-// "Actual Shipment Size" stat can sit right next to this once final
-// weight/dimensions capture exists (see docs/phase4-sourcing-lifecycle.md)
-// — not built yet, this is the estimate side only.
+// "700.0 kg — box/pallet size (per vendor quote): 120 x 15 x 15 cm (2 of
+// 3 line items — 1 not yet sourced)" — the dimensions clause is wordy on
+// purpose: it's one vendor's packing-unit size (not the line item's own
+// unit of measure, and not a whole-shipment figure), only included when
+// every sourced line agrees on it (see shipmentSizeCalc.js). The
+// partial-sourcing note only appears when some line items still have no
+// vendor selected. A slot for an "Actual Shipment Size" stat can sit
+// right next to this once final weight/dimensions capture exists (see
+// docs/phase4-sourcing-lifecycle.md) — not built yet, this is the
+// estimate side only.
 function formatShipmentSize(estimate) {
   if (!estimate) return "—";
 
   let text = `${formatNumber(estimate.totalWeightKg, 1)} kg`;
   if (estimate.dimensionsText) {
-    text += ` — ${estimate.dimensionsText} per unit`;
+    text += ` — box/pallet size (per vendor quote): ${estimate.dimensionsText}`;
   }
   if (estimate.sourcedCount < estimate.totalCount) {
     const missing = estimate.totalCount - estimate.sourcedCount;

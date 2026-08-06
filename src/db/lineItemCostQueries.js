@@ -15,11 +15,11 @@ const { toSourcedLineItems, buildLineCosts } = require("./marginCalc");
 // dimensions, lead_time_days, received_date, estimated_transit_days all
 // come from the selected vendor's own quote line, same source the Freight
 // Inquiry and Expediting screens already use — dimensions is a vendor-
-// supplied free-text box size (e.g. "120 x 15 x 15 cm"), not structured
-// numeric fields, so it's only ever displayed as-is, never computed with.
-// supplier_quote_line_item_id identifies exactly which vendor-quote-line
-// was selected, so Supplier Comparison rows can be matched against it
-// precisely.
+// supplied free-text box/pallet size (e.g. "120 x 15 x 15 cm"), one
+// packing unit's size, not structured numeric fields, so it's only ever
+// displayed as-is, never computed with. supplier_quote_line_item_id
+// identifies exactly which vendor-quote-line was selected, so Supplier
+// Comparison rows can be matched against it precisely.
 const RFQ_LINE_ITEMS_WITH_SOURCING_QUERY = `
   SELECT li.id AS rfq_line_item_id, li.description, li.quantity, li.unit,
          s.id AS supplier_id, s.name AS supplier_name,
