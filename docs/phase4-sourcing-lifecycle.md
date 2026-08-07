@@ -162,6 +162,15 @@ Documentation only — no code changes yet. This applies once a customs/tariff m
 
 `item_numbers` already encodes form and material for every line item (see the Form/Material code tables above). Eventually an HS (Harmonized System) code should be derivable from that same form + material combination, and combined with a shipment's destination country, used to estimate customs duties as part of landed cost — tariff treatment varies significantly by destination (e.g. certain steel grades are tariffed entering the US but not the UK), so the destination isn't optional context here, it's a required input to the estimate.
 
+## Future: admin page for report boilerplate text & markup defaults
+
+Documentation only — no code changes yet. Not built now; capturing this so it's designed as one shared admin-page feature rather than two separate ones later.
+
+Staff-editable settings, not baked into code:
+
+1. **Report boilerplate text** — the fixed wording on customer/vendor-facing print documents (INQ, FRQ, Quote, PO-to-vendor) should be editable by staff, not hardcoded in the view files.
+2. **Default markup percentages** — the sell-price suggestion shown when a quote is first created (`ITEM_MARKUP_PCT` = 30% on item cost, `FREIGHT_MARKUP_PCT` = 15% on freight cost, both in `src/db/marginCalc.js`'s `suggestSellPrice`) is currently hardcoded. These are only ever a starting point — sales can already override any sell price with no bound (see the Quote versioning/editing work) — but the default percentages themselves should eventually be staff-editable too, rather than requiring a code change to adjust.
+
 ## Later addition: job_number, the stable end-to-end deal reference
 
 `rfqs` gains `job_number` — format `PM-100000`, generated the same way `rfq_number` is (a plain incrementing counter, `jobCounter`/`getNextJobNumber` in seed.js/rfqIntakeQueries.js respectively), assigned once at RFQ creation, never reassigned.
