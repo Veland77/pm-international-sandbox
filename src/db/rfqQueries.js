@@ -46,6 +46,7 @@ const SUPPLIER_COMPARISON_QUERY = `
          si.status AS outreach_status,
          sq.quote_ref, sq.availability, sq.valid_until,
          li.id AS rfq_line_item_id, li.description AS line_item_description,
+         li.quantity AS line_item_quantity, li.unit AS line_item_unit,
          sqli.id AS supplier_quote_line_item_id,
          sqli.unit_price, sqli.currency, sqli.weight_kg, sqli.dimensions,
          sqli.crating_cost, sqli.lead_time_days
@@ -55,7 +56,7 @@ const SUPPLIER_COMPARISON_QUERY = `
   LEFT JOIN supplier_quote_line_items sqli ON sqli.supplier_quote_id = sq.id
   LEFT JOIN rfq_line_items li ON li.id = sqli.rfq_line_item_id
   WHERE si.rfq_id = ?
-  ORDER BY s.name, sqli.rfq_line_item_id
+  ORDER BY sqli.rfq_line_item_id, s.name
 `;
 
 const QUOTE_QUERY = `

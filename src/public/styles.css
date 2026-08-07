@@ -253,6 +253,23 @@ th {
 }
 
 /* Totals row at the bottom of a table body — e.g. the Quote section. */
+/* Supplier Comparison table: one header row per RFQ line item, then that
+   line's vendor quotes below it. cell-best marks whichever cell in a
+   group has the lowest USD price / shortest lead time — price and lead
+   time are graded independently, so at most one of each per group. */
+
+.table-group-header td {
+  background: var(--color-cream);
+  font-weight: 700;
+  border-top: 2px solid var(--color-border);
+}
+
+.cell-best {
+  background: rgba(46, 125, 50, 0.12);
+  color: var(--color-positive);
+  font-weight: 700;
+}
+
 .total-row td {
   font-weight: 700;
   background: #f7f4ec;

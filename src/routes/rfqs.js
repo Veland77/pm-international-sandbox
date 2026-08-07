@@ -75,6 +75,9 @@ router.get("/:id", (req, res) => {
   const quoteDisplayRows =
     freightDisplayMode === "included" ? buildLandedLineItemRows(displayRows, freightRow) : displayRows;
 
+  const rates = getCurrencyRates(db);
+  const rateMap = new Map(rates.map((r) => [r.currency_code, r.rate_to_usd]));
+
   // Match each Supplier Comparison row to a per-line freight cost only
   // when it's the EXACT vendor-quote-line actually selected for that
   // line — not just any row for a vendor that happens to be sourced
@@ -94,6 +97,7 @@ router.get("/:id", (req, res) => {
     return {
       ...row,
       freightUnitUsd: displayRow ? displayRow.freightUnitUsd : null,
+      unitPriceUsd: row.unit_price == null ? null : toUsd(row.unit_price, row.currency, rateMap),
     };
   });
 
@@ -105,8 +109,6 @@ router.get("/:id", (req, res) => {
   );
 
   const freightInquiries = getFreightInquiriesForRfq(db, rfq.id);
-  const rates = getCurrencyRates(db);
-  const rateMap = new Map(rates.map((r) => [r.currency_code, r.rate_to_usd]));
   const selectedFreightBySupplierId = new Map(
     getSelectedFreightQuotesForRfq(db, rfq.id).map((q) => [
       q.supplier_id,

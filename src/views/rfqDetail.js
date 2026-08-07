@@ -277,37 +277,93 @@ function freightInquiriesSection(rfqId, freightInquiries, selectedFreightBySuppl
     </div>`;
 }
 
-function supplierComparisonSection(rows) {
-  if (!rows.length) {
-    return "";
-  }
-
-  const tableRows = rows
-    .map((r) => {
-      if (!r.line_item_description) {
-        // Supplier was contacted but never sent pricing back (Declined/Expired).
-        return `
+// Supplier was contacted but never sent pricing back (Declined/Expired) —
+// doesn't belong to any item-line group, so it's listed separately below
+// the groups rather than grafted onto one.
+function noQuoteReceivedRow(r) {
+  return `
     <tr>
       <td><a href="/supplier-inquiries/${r.supplier_inquiry_id}">${escapeHtml(r.inquiry_number)}</a></td>
       <td>${escapeHtml(r.supplier_name)} (${escapeHtml(r.supplier_country)})</td>
       <td colspan="7">${escapeHtml(r.outreach_status)} — no quote received</td>
     </tr>`;
-      }
-      const freightText = r.freightUnitUsd == null ? "—" : formatCurrency(r.freightUnitUsd);
-      return `
+}
+
+// isBestPrice/isBestLeadTime are computed once per item-line group (see
+// supplierComparisonSection) and highlight independently — the cheapest
+// vendor for a line isn't necessarily the fastest one. Lead time here is
+// the vendor's own quoted lead time only, never freight — a non-winning
+// vendor structurally never has a freight quote to compare (see
+// freightUnitUsd's own comment below).
+function supplierComparisonRow(r, { isBestPrice, isBestLeadTime }) {
+  const freightText = r.freightUnitUsd == null ? "—" : formatCurrency(r.freightUnitUsd);
+  const usdPriceText = r.unitPriceUsd == null ? "—" : formatCurrency(r.unitPriceUsd);
+  const leadTimeText = r.lead_time_days == null ? "—" : escapeHtml(r.lead_time_days);
+  return `
     <tr>
       <td><a href="/supplier-inquiries/${r.supplier_inquiry_id}">${escapeHtml(r.inquiry_number)}</a></td>
       <td>${escapeHtml(r.supplier_name)} (${escapeHtml(r.supplier_country)})</td>
-      <td>${escapeHtml(r.line_item_description)}</td>
       <td>${escapeHtml(formatCurrency(r.unit_price, ""))} ${escapeHtml(r.currency)}</td>
-      <td>${escapeHtml(r.lead_time_days)}</td>
+      <td class="${isBestPrice ? "cell-best" : ""}">${escapeHtml(usdPriceText)}</td>
+      <td class="${isBestLeadTime ? "cell-best" : ""}">${leadTimeText}</td>
       <td>${escapeHtml(r.availability)}</td>
       <td>${escapeHtml(r.weight_kg)} kg / ${escapeHtml(r.dimensions)}</td>
       <td>${escapeHtml(formatCurrency(r.crating_cost, ""))} ${escapeHtml(r.currency)}</td>
       <td>${escapeHtml(freightText)}</td>
     </tr>`;
+}
+
+// Grouped by RFQ line item (not by vendor) — every vendor quote for one
+// line item together, then the next line item. A vendor that didn't quote
+// a given line simply produced no row for it in the query, so there's
+// nothing to skip here. Rows arrive already in
+// (rfq_line_item_id, supplier name) order from SUPPLIER_COMPARISON_QUERY.
+function supplierComparisonSection(rows) {
+  if (!rows.length) {
+    return "";
+  }
+
+  const quotedRows = rows.filter((r) => r.line_item_description);
+  const noQuoteRows = rows.filter((r) => !r.line_item_description);
+
+  const groups = [];
+  const groupByLineItemId = new Map();
+  quotedRows.forEach((r) => {
+    if (!groupByLineItemId.has(r.rfq_line_item_id)) {
+      const group = {
+        description: r.line_item_description,
+        quantity: r.line_item_quantity,
+        unit: r.line_item_unit,
+        rows: [],
+      };
+      groupByLineItemId.set(r.rfq_line_item_id, group);
+      groups.push(group);
+    }
+    groupByLineItemId.get(r.rfq_line_item_id).rows.push(r);
+  });
+
+  const groupsHtml = groups
+    .map((group) => {
+      const usdPrices = group.rows.map((r) => r.unitPriceUsd).filter((v) => v != null);
+      const bestUsdPrice = usdPrices.length ? Math.min(...usdPrices) : null;
+      const leadTimes = group.rows.map((r) => r.lead_time_days).filter((v) => v != null);
+      const bestLeadTime = leadTimes.length ? Math.min(...leadTimes) : null;
+
+      const vendorRowsHtml = group.rows
+        .map((r) =>
+          supplierComparisonRow(r, {
+            isBestPrice: bestUsdPrice != null && r.unitPriceUsd === bestUsdPrice,
+            isBestLeadTime: bestLeadTime != null && r.lead_time_days === bestLeadTime,
+          })
+        )
+        .join("");
+
+      return `
+    <tr class="table-group-header"><td colspan="9">${escapeHtml(group.quantity)} ${escapeHtml(group.unit)} &mdash; ${escapeHtml(group.description)}</td></tr>${vendorRowsHtml}`;
     })
     .join("");
+
+  const noQuoteRowsHtml = noQuoteRows.map(noQuoteReceivedRow).join("");
 
   return `
     <div class="card">
@@ -315,11 +371,11 @@ function supplierComparisonSection(rows) {
       <table>
         <thead>
           <tr>
-            <th>Inquiry #</th><th>Vendor</th><th>Line Item</th><th>Unit Price</th><th>Lead Time (days)</th>
+            <th>Inquiry #</th><th>Vendor</th><th>Unit Price</th><th>Unit Price (USD)</th><th>Lead Time (days)</th>
             <th>Availability</th><th>Weight / Dimensions</th><th>Crating Cost</th><th>Freight Cost</th>
           </tr>
         </thead>
-        <tbody>${tableRows}</tbody>
+        <tbody>${groupsHtml}${noQuoteRowsHtml}</tbody>
       </table>
     </div>`;
 }
