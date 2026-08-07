@@ -24,7 +24,7 @@ const RFQ_QUERY = `
 `;
 
 const LINE_ITEMS_QUERY = `
-  SELECT li.id, li.description, li.quantity, li.unit, li.length_m,
+  SELECT li.id, li.description, li.quantity, li.unit, li.length_m, li.catalog_match_note,
          m.name AS material_name, pf.name AS product_form_name, s.code AS standard_code,
          inum.item_number, inum.status AS item_number_status
   FROM rfq_line_items li

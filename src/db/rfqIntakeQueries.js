@@ -74,8 +74,8 @@ function createRfqWithLineItems(db, input) {
     VALUES (?, ?, ?, ?, ?, ?, 'New', 'New', ?, ?, ?)
   `);
   const insertLineItem = db.prepare(`
-    INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, standard_id, description, quantity, unit, length_m)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO rfq_line_items (rfq_id, material_id, product_form_id, standard_id, description, quantity, unit, length_m, catalog_match_note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertItemNumber = db.prepare(`
     INSERT INTO item_numbers (item_number, rfq_line_item_id, form_id, material_id, spec_summary, status, created_date)
@@ -96,8 +96,15 @@ function createRfqWithLineItems(db, input) {
           ).lastInsertRowid
         : input.accountId;
 
+    // "existingAccountNewContact": a known company, but the person who
+    // actually reached out isn't in contacts yet (see AI Email Intake's
+    // domain-based account matching — e.g. someone new taking over
+    // procurement at an existing account). Distinct from "new" (which
+    // creates both) and the default "existing" (which assumes both ids
+    // are already given) — only the manual New RFQ form still uses that
+    // plain existing/new binary; this third mode exists for email intake.
     const contactId =
-      input.accountMode === "new"
+      input.accountMode === "new" || input.accountMode === "existingAccountNewContact"
         ? insertContact.run(
             accountId,
             input.newContact.name,
@@ -135,7 +142,8 @@ function createRfqWithLineItems(db, input) {
         li.description,
         li.quantity,
         li.unit,
-        li.lengthM
+        li.lengthM,
+        li.catalogMatchNote || null
       ).lastInsertRowid;
 
       const materialName = materialById.get(li.materialId);
@@ -150,7 +158,7 @@ function createRfqWithLineItems(db, input) {
       insertItemNumber.run(itemNumber, lineId, li.productFormId, li.materialId, li.description, today);
     });
 
-    return { rfqId, rfqNumber, jobNumber };
+    return { rfqId, rfqNumber, jobNumber, accountId };
   });
 
   return run();

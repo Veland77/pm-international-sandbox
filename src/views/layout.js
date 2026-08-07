@@ -19,6 +19,7 @@ function layout({ title, bodyHtml }) {
     <a class="site-title" href="/">PM International Sandbox</a>
     <div class="site-links">
       <a href="/rfqs">RFQs</a>
+      <a href="/email-intake">Email Intake</a>
     </div>
   </nav>
   <div class="page-container">

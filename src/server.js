@@ -44,6 +44,7 @@ app.use("/supplier-inquiries", require("./routes/supplierInquiryAttachments")); 
 app.use("/supplier-inquiries", require("./routes/supplierInquiries"));
 app.use("/inquiries", require("./routes/inquiryPrint"));
 app.use("/freight-inquiries", require("./routes/freightPrint"));
+app.use("/email-intake", require("./routes/emailIntake"));
 
 app.get("/", (req, res) => {
   res.send(

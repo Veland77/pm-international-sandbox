@@ -117,6 +117,60 @@ test("getNextRfqNumber, getNextJobNumber, and getNextItemNumberSequence continue
   assert.equal(getNextItemNumberSequence(db), 3);
 });
 
+test("createRfqWithLineItems with accountMode 'existingAccountNewContact' reuses the account but creates a new contact under it", () => {
+  const result = createRfqWithLineItems(db, {
+    accountMode: "existingAccountNewContact",
+    accountId,
+    newContact: { name: "Someone New", title: "Buyer", email: "someone.new@example.com", phone: "+1 555 000 0002" },
+    salesRepId: userId,
+    projectName: "Third Test Project",
+    dueDate: "2026-09-20",
+    customerRequestedDeliveryDate: null,
+    lineItems: [
+      { materialId, productFormId, standardId, description: '8" Ball Valve', quantity: 2, unit: "EA", lengthM: null },
+    ],
+  });
+
+  assert.equal(result.accountId, accountId); // no second account created
+
+  const rfq = db.prepare("SELECT * FROM rfqs WHERE id = ?").get(result.rfqId);
+  assert.equal(rfq.account_id, accountId);
+
+  const contact = db.prepare("SELECT * FROM contacts WHERE id = ?").get(rfq.contact_id);
+  assert.equal(contact.name, "Someone New");
+  assert.equal(contact.account_id, accountId);
+  assert.notEqual(contact.id, contactId); // a genuinely new contact row, not the pre-existing one
+});
+
+test("createRfqWithLineItems stores catalog_match_note when a line item provides one, and leaves it null otherwise", () => {
+  const result = createRfqWithLineItems(db, {
+    accountMode: "existing",
+    accountId,
+    contactId,
+    salesRepId: userId,
+    projectName: "Fourth Test Project",
+    dueDate: "2026-09-25",
+    customerRequestedDeliveryDate: null,
+    lineItems: [
+      {
+        materialId,
+        productFormId,
+        standardId: null,
+        description: "Zirconium 702 Round Bar (forced stand-in)",
+        quantity: 15,
+        unit: "FT",
+        lengthM: null,
+        catalogMatchNote: 'AI Email Intake: material requested as "Zirconium 702" — not in catalog, mapped to "Titanium". Verify before quoting.',
+      },
+      { materialId, productFormId, standardId, description: "Ordinary matched line", quantity: 1, unit: "EA", lengthM: null },
+    ],
+  });
+
+  const lineItems = db.prepare("SELECT * FROM rfq_line_items WHERE rfq_id = ? ORDER BY id").all(result.rfqId);
+  assert.match(lineItems[0].catalog_match_note, /Zirconium 702/);
+  assert.equal(lineItems[1].catalog_match_note, null);
+});
+
 test.after(() => {
   db.close();
   fs.rmSync(scratchDbPath, { force: true });

@@ -127,10 +127,14 @@ function lineItemRows(rfqId, lineItems, displayRowsByLineItemId) {
       const compareLinkText = row && row.sourced ? "Change Vendor" : "Compare Vendors";
       const costCells = row ? costMarginCells(row) : "<td>—</td><td>—</td><td>—</td>";
 
+      const catalogMatchWarning = li.catalog_match_note
+        ? ` <span class="text-negative" title="${escapeHtml(li.catalog_match_note)}">⚠ Approximate catalog match — see note</span>`
+        : "";
+
       return `
     <tr>
       <td>${escapeHtml(li.item_number || "—")}${notConverted ? " (Not Converted)" : ""}</td>
-      <td>${escapeHtml(li.material_name)}</td>
+      <td>${escapeHtml(li.material_name)}${catalogMatchWarning}</td>
       <td>${escapeHtml(li.product_form_name)}</td>
       <td>${escapeHtml(li.standard_code || "—")}</td>
       <td>${escapeHtml(li.description)}</td>

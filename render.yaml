@@ -25,5 +25,11 @@ services:
         sync: false
       - key: SANDBOX_PASSWORD
         sync: false
+      # AI Email Intake — Anthropic API key, same "expects a value, never
+      # stored here" pattern as the credentials above. Without this set,
+      # the Email Intake feature fails clearly on submit rather than
+      # doing nothing silently.
+      - key: ANTHROPIC_API_KEY
+        sync: false
     domains:
       - sandbox.litleholm.no

@@ -359,6 +359,8 @@ const seedTransaction = db.transaction(() => {
     DELETE FROM activities; DELETE FROM quote_line_items; DELETE FROM quotes;
     DELETE FROM rfq_attachments;
     DELETE FROM customer_facing_attachments;
+    DELETE FROM email_intake_attachments;
+    DELETE FROM rfq_email_intake;
     DELETE FROM rfq_line_items; DELETE FROM rfqs; DELETE FROM contacts;
     DELETE FROM accounts; DELETE FROM users;
     DELETE FROM materials; DELETE FROM product_forms; DELETE FROM standards;

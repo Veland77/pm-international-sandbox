@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 24;
+const SCHEMA_VERSION = 25;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -90,7 +90,13 @@ CREATE TABLE IF NOT EXISTS rfq_line_items (
   description TEXT NOT NULL,
   quantity INTEGER NOT NULL,
   unit TEXT NOT NULL,               -- 'EA', 'FT', 'M'
-  length_m REAL                     -- item length in meters, nullable (not every form has a meaningful length)
+  length_m REAL,                    -- item length in meters, nullable (not every form has a meaningful length)
+  catalog_match_note TEXT           -- only set when material_id/product_form_id required a deliberate, imperfect
+                                     -- stand-in — e.g. AI Email Intake flagged the customer's own wording as not
+                                     -- in the catalog, and staff explicitly chose the closest existing material/
+                                     -- form at confirmation time rather than the exact thing asked for. Keeps
+                                     -- that forced approximation permanently visible (never silent) — see
+                                     -- src/routes/emailIntake.js and docs on the AI Email Intake feature.
 );
 
 -- quote_number is stable across every version of the same quote lineage
@@ -260,7 +266,11 @@ CREATE TABLE IF NOT EXISTS currency_rates (
 -- on purpose. PM has exclusivity with some customers in certain markets,
 -- and suppliers must never see which end customer an inquiry is for.
 -- Nothing in this codebase should ever copy a row from one of these
--- tables into another.
+-- tables into another. The one deliberate, narrow exception is
+-- email_intake_attachments (below the AI Email Intake tables further
+-- down) — a pre-RFQ staging area that only ever promotes INTO
+-- rfq_attachments, one direction, never the reverse, and never touching
+-- the other two attachment tables at all.
 
 -- The customer's original files (received FROM the customer, or internal
 -- working files about them). Never referenced from any supplier-facing or
@@ -484,6 +494,49 @@ CREATE TABLE IF NOT EXISTS shipment_documents (
   original_filename TEXT NOT NULL,
   stored_filename TEXT NOT NULL UNIQUE,
   uploaded_date TEXT NOT NULL
+);
+
+-- AI Email Intake (Phase 0.5): a staging area for an RFQ that hasn't been
+-- created yet. Nothing here ever becomes real until a human reviews and
+-- confirms it — see src/routes/emailIntake.js. raw_email_text is nullable
+-- because a submission can be screenshot-only (see email_intake_attachments
+-- below); at least one of {text, screenshot} is required at the app layer,
+-- not enforced here. extracted_json is the AI's structured output stored
+-- verbatim, kept even after confirmation, so what the AI actually said and
+-- what staff actually confirmed can be compared later (prompt-quality
+-- review, and the natural foundation for a future duplicate-RFQ check).
+CREATE TABLE IF NOT EXISTS rfq_email_intake (
+  id INTEGER PRIMARY KEY,
+  raw_email_text TEXT,
+  extracted_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'Pending Review', -- 'Pending Review', 'Confirmed', 'Discarded'
+  created_date TEXT NOT NULL,
+  confirmed_rfq_id INTEGER REFERENCES rfqs(id),
+  confirmed_date TEXT
+);
+
+-- Files attached to an email-intake submission — a screenshot used as the
+-- AI's extraction input (used_for_extraction = 1, at most one row per
+-- submission) and/or any other files that came with the original email
+-- (drawings, spec sheets), which are pure filing and are never sent to the
+-- AI. On confirmation, every row here gets promoted into rfq_attachments
+-- (Customer Attachments — these were received from the customer, the same
+-- direction rfq_attachments already covers) via the existing
+-- createRfqAttachment. The bytes are copied into rfq attachment storage
+-- under a freshly generated stored_filename rather than reusing this
+-- table's stored_filename — each attachment system keeps its own storage
+-- directory (see rfqAttachmentStorage.js vs emailIntakeAttachmentStorage.js),
+-- so a filename minted here was never written anywhere the RFQ download
+-- route looks.
+CREATE TABLE IF NOT EXISTS email_intake_attachments (
+  id INTEGER PRIMARY KEY,
+  email_intake_id INTEGER NOT NULL REFERENCES rfq_email_intake(id),
+  original_filename TEXT NOT NULL,
+  stored_filename TEXT NOT NULL UNIQUE,
+  uploaded_date TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  description TEXT,
+  used_for_extraction INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS schema_meta (
