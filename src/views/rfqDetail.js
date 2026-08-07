@@ -397,7 +397,78 @@ function freightViewToggle(rfqId, freightDisplayMode) {
     </p>`;
 }
 
-function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourced, freightDisplayMode) {
+function quoteActions(rfq, quote, order) {
+  if (quote.status === "Draft") {
+    return `
+      <a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/new">Edit Draft Quote</a>
+      <form method="POST" action="/rfqs/${rfq.id}/quote/mark-sent" style="display:inline;">
+        <button type="submit" class="btn btn-primary">Mark as Sent</button>
+      </form>`;
+  }
+  // Revising once an Order already exists would be misleading — the
+  // order/PO total is fixed to whichever version was active at
+  // conversion time, and nothing propagates a later quote edit into it.
+  if (order) {
+    return `<p style="color: var(--color-text-muted);">This quote can no longer be revised — an order already exists for this job.</p>`;
+  }
+  return `<a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/new">Revise Quote</a>`;
+}
+
+// Prior (always 'Superseded') versions, most recent first — sell prices
+// only, deliberately no buy price/margin: buy price depends on CURRENT
+// sourcing, which isn't itself versioned, so computing "margin" for an
+// old version against today's sourcing could show a number that never
+// actually applied when that version was sent. Each entry is its own
+// <details> so the page doesn't get crowded by default; each links to
+// its own print document.
+function quoteHistorySection(rfqId, quoteHistory) {
+  if (!quoteHistory.length) return "";
+
+  const entries = quoteHistory
+    .map((q) => {
+      const rows = q.lines
+        .map(
+          (l) => `
+      <tr>
+        <td>${escapeHtml(l.description)}</td>
+        <td>${escapeHtml(l.quantity)}</td>
+        <td>${escapeHtml(l.unit)}</td>
+        <td>${escapeHtml(formatCurrency(l.unit_price_usd))}</td>
+      </tr>`
+        )
+        .join("");
+      const freightRowHtml =
+        q.freight_sell_price_usd == null
+          ? ""
+          : `
+      <tr>
+        <td>Freight</td>
+        <td></td>
+        <td></td>
+        <td>${escapeHtml(formatCurrency(q.freight_sell_price_usd))}</td>
+      </tr>`;
+
+      return `
+    <details class="quote-history-entry">
+      <summary>${escapeHtml(q.quote_number)} (v${escapeHtml(q.version)}) &mdash; ${escapeHtml(q.status)} &middot; ${escapeHtml(formatDate(q.created_date))}</summary>
+      <table>
+        <thead><tr><th>Description</th><th>Qty</th><th>Unit</th><th>Sell Price</th></tr></thead>
+        <tbody>${rows}${freightRowHtml}</tbody>
+      </table>
+      <p><a href="/rfqs/${rfqId}/quote/${q.id}/print">Print</a></p>
+    </details>`;
+    })
+    .join("");
+
+  return `
+    <div class="card">
+      <h2>Quote History</h2>
+      <p>Prior versions, most recent first — sell prices only, exactly as they were sent at the time.</p>
+      ${entries}
+    </div>`;
+}
+
+function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourced, freightDisplayMode, order) {
   if (!quote) {
     if (!anySourced) {
       return '<div class="card"><h2>Quote</h2><p>No quote yet — select a vendor for at least one line item first.</p></div>';
@@ -475,15 +546,6 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
     </tr>`
     : "";
 
-  const draftActions =
-    quote.status === "Draft"
-      ? `
-      <a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/new">Edit Draft Quote</a>
-      <form method="POST" action="/rfqs/${rfq.id}/quote/mark-sent" style="display:inline;">
-        <button type="submit" class="btn btn-primary">Mark as Sent</button>
-      </form>`
-      : "";
-
   return `
     <div class="card">
       <h2>Quote ${escapeHtml(quote.quote_number)} (v${escapeHtml(quote.version)})</h2>
@@ -495,7 +557,7 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
         </thead>
         <tbody>${quoteRows}${freightRowHtml}${totalsRow}</tbody>
       </table>
-      <p><a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/print">Print / Create Report</a> ${draftActions}</p>
+      <p><a class="btn btn-secondary" href="/rfqs/${rfq.id}/quote/${quote.id}/print">Print / Create Report</a> ${quoteActions(rfq, quote, order)}</p>
     </div>`;
 }
 
@@ -512,6 +574,7 @@ function rfqDetailPage({
   estimatedArrivalDate = null,
   shipmentSizeEstimate = null,
   supplierComparison = [],
+  quoteHistory = [],
   rfqAttachments = [],
   customerFacingAttachments = [],
   supplierInquiries = [],
@@ -554,7 +617,9 @@ function rfqDetailPage({
       </p>
     </div>
 
-    ${quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourced, freightDisplayMode)}
+    ${quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourced, freightDisplayMode, order)}
+
+    ${quoteHistorySection(rfq.id, quoteHistory)}
 
     ${supplierInquiriesSection(rfq.id, supplierInquiries)}
 

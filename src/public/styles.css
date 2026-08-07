@@ -410,6 +410,30 @@ textarea:focus {
   flex: 0 0 auto;
 }
 
+/* Quote History — one collapsed <details> per prior (Superseded) quote
+   version on the RFQ detail page. */
+
+.quote-history-entry {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.quote-history-entry:first-child {
+  margin-top: 0.75rem;
+  padding-top: 0;
+  border-top: none;
+}
+
+.quote-history-entry summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.quote-history-entry table {
+  margin-top: 0.75rem;
+}
+
 /* Milestone timeline — compact horizontal strip of the 6 shipment stages,
    used on the RFQ detail page (beneath Order Summary) and reused by the
    Expediting workscreen. */

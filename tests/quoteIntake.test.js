@@ -1,5 +1,5 @@
 // tests/quoteIntake.test.js
-// Exercises the Offer to Customer quote create/edit/mark-sent CRUD
+// Exercises the Offer to Customer quote create/edit/mark-sent/revise CRUD
 // against a scratch SQLite database, never the real seed data. Reads
 // (line items, sourcing, freight-allocated costs) are covered separately
 // in tests/lineItemCostQueries.test.js.
@@ -15,7 +15,13 @@ process.env.DATABASE_PATH = scratchDbPath;
 
 const { getDb } = require("../src/db/connection");
 const { SCHEMA } = require("../src/db/schema");
-const { getNextQuoteNumber, createQuote, updateDraftQuote, markQuoteAsSent } = require("../src/db/quoteBuildQueries");
+const {
+  getNextQuoteNumber,
+  createQuote,
+  updateDraftQuote,
+  markQuoteAsSent,
+  createQuoteVersion,
+} = require("../src/db/quoteBuildQueries");
 
 const db = getDb();
 db.exec(SCHEMA);
@@ -152,6 +158,63 @@ test("updateDraftQuote is a no-op once the quote is no longer Draft", () => {
   assert.equal(after.freight_sell_price_usd, before.freight_sell_price_usd);
   assert.equal(after.status, "Sent");
   assert.deepEqual(linesAfter, linesBefore);
+});
+
+test("createQuoteVersion is a no-op when the quote is still Draft", () => {
+  // A throwaway second Draft quote just to exercise the guard in
+  // isolation — not meant to represent a real app state (the route never
+  // lets two active quotes coexist for one RFQ).
+  const draftQuoteId = createQuote(db, {
+    rfqId,
+    validUntil: "2026-05-01",
+    freightSellPriceUsd: 40,
+    lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 150, leadTimeDays: 12, targetMarginPct: 20 }],
+  });
+
+  const result = createQuoteVersion(db, {
+    quoteId: draftQuoteId,
+    validUntil: "2026-06-01",
+    freightSellPriceUsd: 41,
+    lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 160, leadTimeDays: 12, targetMarginPct: 21 }],
+  });
+
+  assert.equal(result, null);
+  const quote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(draftQuoteId);
+  assert.equal(quote.status, "Draft");
+  assert.equal(quote.valid_until, "2026-05-01");
+});
+
+test("createQuoteVersion supersedes the prior version and creates the next version as Sent, reusing quote_number", () => {
+  const priorQuote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(quoteId);
+  const priorLines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(quoteId);
+
+  const newQuoteId = createQuoteVersion(db, {
+    quoteId,
+    validUntil: "2026-07-01",
+    promisedDeliveryDate: "2026-08-01",
+    freightSellPriceUsd: 60,
+    lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 180, leadTimeDays: 12, targetMarginPct: 25 }],
+  });
+
+  assert.ok(newQuoteId);
+
+  const supersededQuote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(quoteId);
+  assert.equal(supersededQuote.status, "Superseded");
+
+  const newQuote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(newQuoteId);
+  assert.equal(newQuote.quote_number, priorQuote.quote_number);
+  assert.equal(newQuote.version, priorQuote.version + 1);
+  assert.equal(newQuote.status, "Sent");
+  assert.equal(newQuote.valid_until, "2026-07-01");
+  assert.equal(newQuote.freight_sell_price_usd, 60);
+
+  const newLines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(newQuoteId);
+  assert.equal(newLines.length, 1);
+  assert.equal(newLines[0].unit_price_usd, 180);
+
+  // Prior version's own line items are never touched — full negotiation traceability.
+  const priorLinesAfter = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(quoteId);
+  assert.deepEqual(priorLinesAfter, priorLines);
 });
 
 test.after(() => {

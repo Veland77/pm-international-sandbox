@@ -1,11 +1,15 @@
 // src/db/quoteBuildQueries.js
 // Writes (and number generation) behind the Offer to Customer quote
-// create/edit screen. One quote per RFQ for now — no re-quote/versioning
-// UI yet, so creation is blocked once any quote exists, but a Draft can
-// be edited in place (delete-and-reinsert its line items) without that
-// requiring the full versioning feature. Reads shared with the rest of
-// the RFQ page (line items, sourcing, freight-allocated costs) live in
-// lineItemCostQueries.js — this file is quote CRUD only.
+// create/edit screen. A still-Draft quote is edited in place
+// (delete-and-reinsert its line items, see updateDraftQuote) — once a
+// quote has been sent (Sent/Accepted/Rejected), editing it instead
+// creates a new version via createQuoteVersion: the prior row becomes
+// 'Superseded', a new row is inserted (same quote_number, version + 1,
+// status 'Sent' directly — "Save & Send"), and the prior version's line
+// items are left untouched for full negotiation traceability. Reads
+// shared with the rest of the RFQ page (line items, sourcing,
+// freight-allocated costs) live in lineItemCostQueries.js — this file is
+// quote CRUD only.
 
 // Same approach as getNextFrqNumber/getNextPoNumber: parse the highest
 // existing trailing number and add one.
@@ -91,4 +95,52 @@ function markQuoteAsSent(db, quoteId) {
   db.prepare("UPDATE quotes SET status = 'Sent' WHERE id = ? AND status = 'Draft'").run(quoteId);
 }
 
-module.exports = { getNextQuoteNumber, createQuote, updateDraftQuote, markQuoteAsSent };
+// Revises a quote that's already been sent at least once (status
+// Sent/Accepted/Rejected — anything but Draft). Never overwrites the
+// existing row: it becomes 'Superseded', and a new row is inserted
+// reusing the same quote_number with version + 1, saved directly as
+// 'Sent' ("Save & Send" — a revision only ever exists because it's being
+// re-presented to the customer, so there's no reason for it to sit as an
+// internal-only Draft first). Only ever touches a quote that's actually
+// non-Draft, checked explicitly up front for the same reason
+// updateDraftQuote checks the opposite — the route only offers this path
+// once a quote exists and isn't Draft, but this is the real guard.
+function createQuoteVersion(db, { quoteId, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines }) {
+  const supersedeQuote = db.prepare("UPDATE quotes SET status = 'Superseded' WHERE id = ?");
+  const insertQuote = db.prepare(`
+    INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date, freight_sell_price_usd)
+    VALUES (?, ?, ?, 'Sent', ?, ?, ?, ?)
+  `);
+  const insertLine = db.prepare(`
+    INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  const run = db.transaction(() => {
+    const priorQuote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(quoteId);
+    if (!priorQuote || priorQuote.status === "Draft") return null;
+
+    supersedeQuote.run(quoteId);
+
+    const createdDate = new Date().toISOString().slice(0, 10);
+    const newQuoteId = insertQuote.run(
+      priorQuote.quote_number,
+      priorQuote.rfq_id,
+      priorQuote.version + 1,
+      createdDate,
+      validUntil,
+      promisedDeliveryDate || null,
+      freightSellPriceUsd
+    ).lastInsertRowid;
+
+    lines.forEach((line) => {
+      insertLine.run(newQuoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.leadTimeDays, line.targetMarginPct);
+    });
+
+    return newQuoteId;
+  });
+
+  return run();
+}
+
+module.exports = { getNextQuoteNumber, createQuote, updateDraftQuote, markQuoteAsSent, createQuoteVersion };

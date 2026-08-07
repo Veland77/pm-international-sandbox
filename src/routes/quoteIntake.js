@@ -1,10 +1,15 @@
 // src/routes/quoteIntake.js
 // "Offer to Customer": turns the sourcing decisions already made (selected
 // vendor per line item, selected freight quote) into a customer-facing
-// quote. One quote per RFQ for now — a Draft can be edited in place
-// (same form, detects the existing Draft and prefills it) but creating a
-// second quote once one exists is blocked; that's re-quoting/versioning,
-// not built yet.
+// quote. A still-Draft quote is edited in place (same form, detects the
+// existing quote and prefills it). Once a quote has been sent
+// (Sent/Accepted/Rejected), editing it instead creates a new version —
+// see createQuoteVersion in quoteBuildQueries.js and the state-machine
+// notes on the quotes table in schema.js. Editing is blocked entirely
+// once an Order already exists for this RFQ: the order/PO total is fixed
+// to whichever quote version was active at conversion time, and nothing
+// propagates a later quote edit into it, so allowing further revisions
+// past that point would be misleading rather than useful.
 
 const express = require("express");
 const { getDb } = require("../db/connection");
@@ -19,7 +24,8 @@ const {
   buildFreightLineItem,
   FREIGHT_LINE_ITEM_CODE,
 } = require("../db/marginCalc");
-const { createQuote, updateDraftQuote, markQuoteAsSent } = require("../db/quoteBuildQueries");
+const { createQuote, updateDraftQuote, markQuoteAsSent, createQuoteVersion } = require("../db/quoteBuildQueries");
+const { getOrderForRfq } = require("../db/orderQueries");
 const {
   getQuoteForPrint,
   getQuoteLineItemsForPrint,
@@ -59,10 +65,12 @@ router.get("/:id/quote/new", (req, res) => {
     return res.status(404).send("RFQ not found");
   }
 
-  const existingQuote = getLatestQuote(db, context.rfq.id);
-  if (existingQuote && existingQuote.status !== "Draft") {
+  if (getOrderForRfq(db, context.rfq.id)) {
     return res.redirect(`/rfqs/${context.rfq.id}`);
   }
+
+  const existingQuote = getLatestQuote(db, context.rfq.id);
+  const mode = !existingQuote ? "create" : existingQuote.status === "Draft" ? "editDraft" : "revise";
 
   const existingLines = existingQuote ? getQuoteLineItems(db, existingQuote.id) : [];
   const existingSellByLineItemId = new Map(existingLines.map((l) => [l.rfq_line_item_id, l.unit_price_usd]));
@@ -107,7 +115,7 @@ router.get("/:id/quote/new", (req, res) => {
   res.send(
     quoteNewFormPage({
       rfq: context.rfq,
-      isEditing: !!existingQuote,
+      mode,
       displayRows,
       freightRow,
       totals,
@@ -127,10 +135,12 @@ router.post("/:id/quote/new", (req, res) => {
     return res.status(404).send("RFQ not found");
   }
 
-  const existingQuote = getLatestQuote(db, context.rfq.id);
-  if (existingQuote && existingQuote.status !== "Draft") {
+  if (getOrderForRfq(db, context.rfq.id)) {
     return res.redirect(`/rfqs/${context.rfq.id}`);
   }
+
+  const existingQuote = getLatestQuote(db, context.rfq.id);
+  const mode = !existingQuote ? "create" : existingQuote.status === "Draft" ? "editDraft" : "revise";
 
   const validUntil = req.body.valid_until;
   const promisedDeliveryDate = req.body.promised_delivery_date || null;
@@ -166,7 +176,7 @@ router.post("/:id/quote/new", (req, res) => {
     return res.status(400).send(
       quoteNewFormPage({
         rfq: context.rfq,
-        isEditing: !!existingQuote,
+        mode,
         displayRows,
         freightRow,
         totals,
@@ -194,10 +204,12 @@ router.post("/:id/quote/new", (req, res) => {
     });
   const freightSellPriceUsd = freightRow.sellUnitPriceUsd;
 
-  if (existingQuote) {
+  if (mode === "create") {
+    createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
+  } else if (mode === "editDraft") {
     updateDraftQuote(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
   } else {
-    createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
+    createQuoteVersion(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
   }
 
   res.redirect(`/rfqs/${context.rfq.id}`);
@@ -222,21 +234,23 @@ router.post("/:id/quote/mark-sent", (req, res) => {
 // getQuoteForPrint/getQuoteLineItemsForPrint/getQuoteShipmentSizeLineItemsForPrint
 // queries (quotePrintQueries.js), never from loadContext/getLineCostsForRfq
 // above, so buy price and margin are never fetched into this route at all,
-// not just left out of what gets rendered.
-router.get("/:id/quote/print", (req, res) => {
+// not just left out of what gets rendered. Scoped to a specific version
+// (:quoteId) rather than always "whatever's latest" — every version,
+// current or superseded, prints its own document for negotiation
+// traceability (see the Quote History list on the RFQ detail page).
+router.get("/:id/quote/:quoteId/print", (req, res) => {
   const db = getDb();
   const rfq = getRfqById(db, req.params.id);
   if (!rfq) {
     return res.status(404).send("RFQ not found");
   }
 
-  const latestQuote = getLatestQuote(db, rfq.id);
-  if (!latestQuote) {
-    return res.status(404).send("No quote yet for this RFQ");
+  const quote = getQuoteForPrint(db, req.params.quoteId);
+  if (!quote || quote.rfq_id !== rfq.id) {
+    return res.status(404).send("Quote not found");
   }
 
-  const quote = getQuoteForPrint(db, latestQuote.id);
-  const lineItems = getQuoteLineItemsForPrint(db, latestQuote.id).map((li) => ({
+  const lineItems = getQuoteLineItemsForPrint(db, quote.id).map((li) => ({
     ...li,
     totalSellUsd: li.sell_unit_price_usd * li.quantity,
   }));

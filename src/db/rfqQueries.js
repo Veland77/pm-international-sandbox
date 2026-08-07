@@ -63,6 +63,14 @@ const QUOTE_QUERY = `
   SELECT * FROM quotes WHERE rfq_id = ? ORDER BY version DESC LIMIT 1
 `;
 
+// Every version of this RFQ's quote, newest first — the latest one (see
+// QUOTE_QUERY above) is always the active version (Draft or Sent); every
+// other row here is always 'Superseded'. Used to render the Quote
+// History list on the RFQ detail page.
+const QUOTE_VERSIONS_QUERY = `
+  SELECT * FROM quotes WHERE rfq_id = ? ORDER BY version DESC
+`;
+
 const QUOTE_LINE_ITEMS_QUERY = `
   SELECT li.id AS rfq_line_item_id, qli.unit_price_usd, qli.lead_time_days, qli.target_margin_pct,
          li.description, li.quantity, li.unit
@@ -125,6 +133,10 @@ function getLatestQuote(db, rfqId) {
   return db.prepare(QUOTE_QUERY).get(rfqId);
 }
 
+function getQuoteVersionsForRfq(db, rfqId) {
+  return db.prepare(QUOTE_VERSIONS_QUERY).all(rfqId);
+}
+
 function getQuoteLineItems(db, quoteId) {
   return db.prepare(QUOTE_LINE_ITEMS_QUERY).all(quoteId);
 }
@@ -150,6 +162,7 @@ module.exports = {
   getRfqById,
   getLineItems,
   getLatestQuote,
+  getQuoteVersionsForRfq,
   getQuoteLineItems,
   getSupplierComparison,
   getCurrencyRates,

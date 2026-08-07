@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 21;
+const SCHEMA_VERSION = 22;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -93,19 +93,28 @@ CREATE TABLE IF NOT EXISTS rfq_line_items (
   length_m REAL                     -- item length in meters, nullable (not every form has a meaningful length)
 );
 
+-- quote_number is stable across every version of the same quote lineage
+-- ("Q-5005" for v1, v2, v3...) — only (quote_number, version) together are
+-- unique, not quote_number alone. Revising a quote that's already been
+-- sent never overwrites it: the prior row's status flips to 'Superseded'
+-- and a new row is inserted with version+1 — see quoteBuildQueries.js's
+-- createQuoteVersion. A still-Draft quote (never yet sent) keeps being
+-- edited in place instead, since there's no negotiation history to
+-- preserve for something that was never externally sent.
 CREATE TABLE IF NOT EXISTS quotes (
   id INTEGER PRIMARY KEY,
-  quote_number TEXT NOT NULL UNIQUE,
+  quote_number TEXT NOT NULL,
   rfq_id INTEGER NOT NULL REFERENCES rfqs(id),
   version INTEGER NOT NULL DEFAULT 1,
-  status TEXT NOT NULL,           -- 'Draft', 'Sent', 'Accepted', 'Rejected'
+  status TEXT NOT NULL,           -- 'Draft', 'Sent', 'Accepted', 'Rejected', 'Superseded'
   created_date TEXT NOT NULL,
   valid_until TEXT NOT NULL,
   promised_delivery_date TEXT,    -- the delivery date PM commits to when quoting
-  freight_sell_price_usd REAL     -- the one aggregated Freight line's sell price, editable like any
+  freight_sell_price_usd REAL,    -- the one aggregated Freight line's sell price, editable like any
                                    -- item's. Freight's buy price is never stored here, same as every
                                    -- item's buy price — always recalculated live from current sourcing/
                                    -- freight-selection data (see marginCalc.js/lineItemCostQueries.js).
+  UNIQUE (quote_number, version)
 );
 
 CREATE TABLE IF NOT EXISTS quote_line_items (

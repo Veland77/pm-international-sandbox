@@ -8,6 +8,7 @@ const {
   getRfqById,
   getLineItems,
   getLatestQuote,
+  getQuoteVersionsForRfq,
   getQuoteLineItems,
   getSupplierComparison,
   getCurrencyRates,
@@ -119,6 +120,13 @@ router.get("/:id", (req, res) => {
   const order = getOrderForRfq(db, rfq.id);
   const shipments = order ? getShipmentsForOrder(db, order.id) : [];
 
+  // Every version but the current/latest one (already covered by `quote`
+  // above) — always 'Superseded', shown as the Quote History list. Each
+  // gets its own line items fetched for the sell-price-only history table.
+  const quoteHistory = getQuoteVersionsForRfq(db, rfq.id)
+    .slice(1)
+    .map((v) => ({ ...v, lines: getQuoteLineItems(db, v.id) }));
+
   res.send(
     rfqDetailPage({
       rfq,
@@ -133,6 +141,7 @@ router.get("/:id", (req, res) => {
       estimatedArrivalDate,
       shipmentSizeEstimate,
       supplierComparison,
+      quoteHistory,
       rfqAttachments,
       customerFacingAttachments,
       supplierInquiries,

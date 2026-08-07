@@ -70,9 +70,9 @@ router.post("/:id/po/:supplierId/generate", (req, res) => {
 //
 // Only reachable once "Generate Purchase Order" has actually been
 // clicked for this vendor — redirects back to the order page otherwise,
-// same guard pattern as the quote-edit route redirecting away once a
-// quote isn't a Draft. Without this, "Generate" would just be a UI
-// suggestion rather than the deliberate action it's meant to be.
+// same guard pattern as the quote-edit route redirecting away once an
+// Order already exists for the RFQ. Without this, "Generate" would just
+// be a UI suggestion rather than the deliberate action it's meant to be.
 router.get("/:id/po/:supplierId/print", (req, res) => {
   const db = getDb();
   const orderHeader = getOrderHeaderForPo(db, req.params.id);

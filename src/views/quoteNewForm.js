@@ -103,9 +103,20 @@ function freightLineRow(freightRow) {
     </tr>`;
 }
 
+// mode: "create" (no quote exists yet — v1, Draft), "editDraft" (v1 still
+// Draft, edited in place), or "revise" (quote already Sent/Accepted/
+// Rejected — saving creates the next version, Sent directly, "Save &
+// Send"). Drives the page title and submit button copy only; the form
+// fields themselves are identical in every mode.
+const PAGE_COPY_BY_MODE = {
+  create: { title: "Create Quote", submitLabel: "Create Quote" },
+  editDraft: { title: "Edit Draft Quote", submitLabel: "Save Changes" },
+  revise: { title: "Revise Quote", submitLabel: "Save & Send" },
+};
+
 function quoteNewFormPage({
   rfq,
-  isEditing,
+  mode,
   displayRows,
   freightRow,
   totals,
@@ -116,10 +127,12 @@ function quoteNewFormPage({
   const totalMarginText = totals
     ? `${formatCurrency(totals.marginUsd)} (${totals.marginPct == null ? "—" : `${totals.marginPct.toFixed(1)}%`})`
     : "—";
+  const copy = PAGE_COPY_BY_MODE[mode];
 
   const body = `
     <a class="back-link" href="/rfqs/${rfq.id}">&larr; Back to ${escapeHtml(rfq.job_number)}</a>
-    <h1>${isEditing ? "Edit Draft Quote" : "Create Quote"} — ${escapeHtml(rfq.job_number)}</h1>
+    <h1>${copy.title} — ${escapeHtml(rfq.job_number)}</h1>
+    ${mode === "revise" ? "<p>Saving this creates a new version of the quote and marks it Sent — the current version stays in Quote History exactly as it was.</p>" : ""}
     ${errorList(errors)}
     ${negativeMarginWarning(hasNegativeMargin, formValues.confirm_negative_margin)}
 
@@ -168,13 +181,13 @@ function quoteNewFormPage({
         </div>
       </div>
 
-      <p><button type="submit" class="btn btn-primary">${isEditing ? "Save Changes" : "Create Quote"}</button></p>
+      <p><button type="submit" class="btn btn-primary">${copy.submitLabel}</button></p>
     </form>
 
     <script src="/quoteBuild.js"></script>
   `;
 
-  return layout({ title: `${isEditing ? "Edit" : "Create"} Quote — ${rfq.job_number}`, bodyHtml: body });
+  return layout({ title: `${copy.title} — ${rfq.job_number}`, bodyHtml: body });
 }
 
 module.exports = { quoteNewFormPage };
