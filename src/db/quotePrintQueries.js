@@ -13,9 +13,10 @@
 // supplier_quote_line_items (weight_kg/dimensions live there), but its
 // SELECT list deliberately omits unit_price — same table, narrower ask.
 // When a quote's freight_display_mode is 'included', quoteIntake.js's
-// print route reuses that same weight_kg data (never touching this file's
-// buy-price-free guarantee) to fold freight into each item — see
-// marginCalc.js's buildLandedPrintLineItems.
+// print route reads landed_sell_price_usd directly per line — the exact
+// combined number the sales rep saved, no folding/approximation needed
+// here at all (unlike before this existed, this document doesn't need
+// any weight or cost data to render that mode correctly).
 
 const QUOTE_PRINT_HEADER_QUERY = `
   SELECT q.id, q.quote_number, q.status, q.created_date, q.valid_until, q.promised_delivery_date,
@@ -33,12 +34,9 @@ const QUOTE_PRINT_HEADER_QUERY = `
 `;
 
 // No join to supplier_quote_line_items anywhere in this query — the only
-// price column reachable here is the customer's own sell price.
-// rfq_line_item_id is included only to match each row against its own
-// weight (from QUOTE_PRINT_SHIPMENT_SIZE_LINE_ITEMS_QUERY below) when
-// freight_display_mode is 'included' — an id, never a price.
+// price columns reachable here are the customer's own sell prices.
 const QUOTE_PRINT_LINE_ITEMS_QUERY = `
-  SELECT li.id AS rfq_line_item_id, li.description, li.quantity, li.unit, qli.unit_price_usd AS sell_unit_price_usd
+  SELECT li.description, li.quantity, li.unit, qli.unit_price_usd AS sell_unit_price_usd, qli.landed_sell_price_usd
   FROM quote_line_items qli
   JOIN rfq_line_items li ON li.id = qli.rfq_line_item_id
   WHERE qli.quote_id = ?

@@ -23,7 +23,10 @@ function getNextQuoteNumber(db) {
   return `Q-${maxN + 1}`;
 }
 
-// lines: [{ rfqLineItemId, sellUnitPriceUsd, leadTimeDays, targetMarginPct }]
+// lines: [{ rfqLineItemId, sellUnitPriceUsd, landedSellPriceUsd, leadTimeDays, targetMarginPct }]
+// sellUnitPriceUsd is always the item's own (freight-free) price; landedSellPriceUsd
+// is only set when freightDisplayMode is 'included' — the combined number the sales
+// rep typed, stored as-is (see marginCalc.js's deriveItemSellFromCombined).
 // freightDisplayMode: 'separate' or 'included' — the sales rep's choice at
 // save time of how this version's freight should be shown; see schema.js.
 function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines }) {
@@ -32,8 +35,8 @@ function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellP
     VALUES (?, ?, ?, 'Draft', ?, ?, ?, ?, ?)
   `);
   const insertLine = db.prepare(`
-    INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, landed_sell_price_usd, lead_time_days, target_margin_pct)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   const run = db.transaction(() => {
@@ -53,7 +56,7 @@ function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellP
     ).lastInsertRowid;
 
     lines.forEach((line) => {
-      insertLine.run(quoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.leadTimeDays, line.targetMarginPct);
+      insertLine.run(quoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.landedSellPriceUsd ?? null, line.leadTimeDays, line.targetMarginPct);
     });
 
     return quoteId;
@@ -76,8 +79,8 @@ function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, freig
   );
   const deleteLines = db.prepare("DELETE FROM quote_line_items WHERE quote_id = ?");
   const insertLine = db.prepare(`
-    INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, landed_sell_price_usd, lead_time_days, target_margin_pct)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   const run = db.transaction(() => {
@@ -87,7 +90,7 @@ function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, freig
     updateQuote.run(validUntil, promisedDeliveryDate || null, freightSellPriceUsd, freightDisplayMode, quoteId);
     deleteLines.run(quoteId);
     lines.forEach((line) => {
-      insertLine.run(quoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.leadTimeDays, line.targetMarginPct);
+      insertLine.run(quoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.landedSellPriceUsd ?? null, line.leadTimeDays, line.targetMarginPct);
     });
   });
 
@@ -115,8 +118,8 @@ function createQuoteVersion(db, { quoteId, validUntil, promisedDeliveryDate, fre
     VALUES (?, ?, ?, 'Sent', ?, ?, ?, ?, ?)
   `);
   const insertLine = db.prepare(`
-    INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, landed_sell_price_usd, lead_time_days, target_margin_pct)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   const run = db.transaction(() => {
@@ -138,7 +141,7 @@ function createQuoteVersion(db, { quoteId, validUntil, promisedDeliveryDate, fre
     ).lastInsertRowid;
 
     lines.forEach((line) => {
-      insertLine.run(newQuoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.leadTimeDays, line.targetMarginPct);
+      insertLine.run(newQuoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.landedSellPriceUsd ?? null, line.leadTimeDays, line.targetMarginPct);
     });
 
     return newQuoteId;

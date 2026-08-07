@@ -1,11 +1,15 @@
 // src/public/quoteBuild.js
-// Live margin recompute for the quote create/edit form. Buy price per
-// line is embedded server-side (data-buy on each row) — this only
-// recomputes margin/totals as a preview while typing; the server
-// recomputes authoritatively on submit, this never decides what gets
-// saved. An item's own margin is buy-vs-sell only; freight is its own
-// row (data-is-freight-line="true") with its own buy/sell/margin, never
-// subtracted from an item's.
+// Live margin recompute for the quote create/edit form, plus the
+// freight_display_mode radio toggle: "As its own line" and "Included in
+// items" each have their own row set in the DOM (data-mode="separate" /
+// data-mode="included"), one of them hidden via the native `hidden`
+// attribute at any time — switching the radio just flips which set is
+// hidden, no page reload, and a hidden row's `required` field is exempt
+// from browser validation automatically. Buy price (and, for included-
+// mode rows, that line's own raw freight cost) are embedded server-side
+// via data attributes — this only recomputes margin/totals as a
+// preview while typing; the server recomputes authoritatively on
+// submit, this never decides what gets saved.
 
 (function () {
   function formatUsd(n) {
@@ -27,8 +31,15 @@
     return Number.isNaN(num) ? NaN : num;
   }
 
+  // freightCost (data-freight-cost) is only ever present on included-mode
+  // item rows — that line's own raw freight cost (never a markup-inflated
+  // figure), added to buy so the margin shown is the all-in margin
+  // against the combined price typed in this mode. Absent everywhere
+  // else, so this is a no-op change for separate-mode rows and the
+  // dedicated Freight row.
   function recomputeRow(row) {
     const buy = parseFloat(row.dataset.buy);
+    const freightCost = parseFloat(row.dataset.freightCost) || 0;
     const quantity = parseFloat(row.dataset.quantity) || 1;
     const isFreightLine = row.dataset.isFreightLine === "true";
     const sellInput = row.querySelector(".quote-sell-price");
@@ -45,7 +56,8 @@
       return null;
     }
 
-    const marginUsd = sell - buy;
+    const cost = buy + freightCost;
+    const marginUsd = sell - cost;
     const marginPct = sell > 0 ? (marginUsd / sell) * 100 : null;
     const cls = marginUsd >= 0 ? "text-positive" : "text-negative";
     marginUsdCell.textContent = formatUsd(marginUsd);
@@ -53,11 +65,14 @@
     marginUsdCell.className = `quote-margin-usd ${cls}`;
     marginPctCell.className = `quote-margin-pct ${cls}`;
 
-    return { sell, buy, quantity, isFreightLine };
+    return { sell, cost, quantity, isFreightLine, freightCost };
   }
 
   function recomputeTotals() {
-    const rows = document.querySelectorAll(".quote-line-row");
+    // Only rows in the currently-active mode — a hidden row (the other
+    // mode's field set) never contributes, whether or not it happens to
+    // hold a leftover typed/suggested value.
+    const rows = document.querySelectorAll(".quote-line-row:not([hidden])");
     const sellEl = document.getElementById("quote-total-sell");
     const buyEl = document.getElementById("quote-total-buy");
     const freightEl = document.getElementById("quote-total-freight");
@@ -65,7 +80,7 @@
     if (!sellEl || !buyEl || !freightEl || !marginEl) return;
 
     let totalSell = 0;
-    let totalBuy = 0;
+    let totalCost = 0;
     let totalFreight = 0;
     let any = false;
     rows.forEach((row) => {
@@ -73,8 +88,12 @@
       if (!r) return;
       any = true;
       totalSell += r.sell * r.quantity;
-      totalBuy += r.buy * r.quantity;
-      if (r.isFreightLine) totalFreight += r.buy * r.quantity;
+      totalCost += r.cost * r.quantity;
+      // Separate mode: the dedicated Freight row's own cost. Included
+      // mode: each item's own folded-in freight cost. Never both at
+      // once — one row set is always hidden/excluded above.
+      if (r.isFreightLine) totalFreight += r.cost * r.quantity;
+      else totalFreight += r.freightCost * r.quantity;
     });
 
     if (!any) {
@@ -86,21 +105,30 @@
       return;
     }
 
-    // totalBuy already includes the freight row's own buy price (summed
-    // like any other row above) — totalFreight is only a separate display
-    // stat here, not subtracted again.
-    const marginUsd = totalSell - totalBuy;
+    const marginUsd = totalSell - totalCost;
     const marginPct = totalSell > 0 ? (marginUsd / totalSell) * 100 : null;
     sellEl.textContent = formatUsd(totalSell);
-    buyEl.textContent = formatUsd(totalBuy);
+    buyEl.textContent = formatUsd(totalCost);
     freightEl.textContent = formatUsd(totalFreight);
     marginEl.textContent = `${formatUsd(marginUsd)} (${marginPct == null ? "—" : `${marginPct.toFixed(1)}%`})`;
     marginEl.className = `stat-value ${marginUsd >= 0 ? "text-positive" : "text-negative"}`;
   }
 
+  function applyFreightDisplayMode(mode) {
+    document.querySelectorAll(".quote-line-row[data-mode]").forEach((row) => {
+      row.hidden = row.dataset.mode !== mode;
+    });
+    recomputeTotals();
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".quote-sell-price").forEach((input) => {
       input.addEventListener("input", recomputeTotals);
+    });
+    document.querySelectorAll('input[name="freight_display_mode"]').forEach((radio) => {
+      radio.addEventListener("change", () => {
+        if (radio.checked) applyFreightDisplayMode(radio.value);
+      });
     });
     recomputeTotals();
   });

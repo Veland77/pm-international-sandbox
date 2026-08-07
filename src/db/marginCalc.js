@@ -3,11 +3,17 @@
 // that shows buy/sell/margin: the Order Summary card, the Line Items
 // table, the Quote section, and (freight only) the Supplier Comparison
 // table. One calculation, reused everywhere — nothing computes margin its
-// own way. Freight is never folded into an item's own buy/sell/margin —
-// it's tracked per line (buildLineCosts, for allocation purposes) but
-// surfaces to a user only as its own aggregated line (buildFreightLineItem),
-// with its own buy/sell/margin, same as any other line. No DB access, so
-// this is directly unit-testable.
+// own way. Freight is never folded into an item's own STORED price
+// (buildLineItemDisplayRows/quote_line_items.unit_price_usd stay
+// freight-free always) — it's tracked per line (buildLineCosts, for
+// allocation purposes) and normally surfaces only as its own aggregated
+// line (buildFreightLineItem). The one deliberate exception: a quote's
+// "Included in items" mode lets the sales rep set a combined sell price
+// directly (landed_sell_price_usd, stored as typed) — see
+// deriveItemSellFromCombined for how the pure item price underneath it
+// gets derived, and buildLineItemDisplayRows's marginIncludesFreight
+// option for how that combined price's margin gets checked. No DB
+// access, so this is directly unit-testable.
 
 const { toUsd } = require("./orderSummary");
 
@@ -187,15 +193,21 @@ function parseSellPriceInput(raw) {
 // allLineItems: rows from getRfqLineItemsWithSourcing (sourced + unsourced)
 // lineCosts: Map from buildLineCosts
 // sellPriceFormValues: { [rfqLineItemId]: "123.45" } — string form input,
-// or an already-saved quote's unit_price_usd values (also passed as strings)
+// or an already-saved quote's unit_price_usd/landed_sell_price_usd values
+// (also passed as strings)
 //
-// A line item's own margin is buy-vs-sell only — freight is never
-// subtracted here, even though costs.freightUnitUsd is still carried on
-// the row (used to build the aggregated Freight line's buy price via
-// buildFreightLineTotal, and still useful context). Freight's own
-// economics live entirely on that one separate line, never split back
-// across the items that happen to make up its shipment.
-function buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues) {
+// A line item's own margin is buy-vs-sell only by default — freight is
+// never subtracted here, even though costs.freightUnitUsd is still
+// carried on the row (used to build the aggregated Freight line's buy
+// price via buildFreightLineTotal, and still useful context). Freight's
+// own economics live entirely on that one separate line, never split
+// back across the items that happen to make up its shipment — UNLESS
+// marginIncludesFreight is set, for the one deliberate exception: when a
+// quote's freight_display_mode is 'included', sellPriceFormValues holds
+// each line's combined (item + freight) sell price, so its margin has to
+// be checked against buy + freight together, or it would look inflated
+// by exactly the freight this price is already covering.
+function buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues, { marginIncludesFreight = false } = {}) {
   return allLineItems.map((li) => {
     if (li.supplier_id == null) {
       return {
@@ -212,7 +224,7 @@ function buildLineItemDisplayRows(allLineItems, lineCosts, sellPriceFormValues) 
     const sellUnitPriceUsd = parseSellPriceInput(raw);
     const { marginUnitUsd, marginPct } =
       sellUnitPriceUsd != null
-        ? buildMargin(sellUnitPriceUsd, costs.buyUnitPriceUsd, null)
+        ? buildMargin(sellUnitPriceUsd, costs.buyUnitPriceUsd, marginIncludesFreight ? costs.freightUnitUsd : null)
         : { marginUnitUsd: null, marginPct: null };
 
     return {
@@ -263,77 +275,23 @@ function buildTotals(displayRows) {
   return { totalSellUsd, totalBuyUsd, totalFreightUsd, marginUsd, marginPct };
 }
 
-// Alternate view of the same saved quote: freight folded back into each
-// item's own buy/sell/margin instead of shown as its own line — never a
-// second calculation, just a different split of the same stored numbers
-// (item sell prices, the freight line's own buy/sell), so switching
-// between this and the separate-line view is lossless and idempotent.
-// Each item absorbs the same weight-based share of the freight line's
-// sell price that it already carries of its buy price (freightUnitUsd,
-// from buildLineCosts) — the same allocation, just applied to the sell
-// side too instead of only the cost side. Quote Totals (Total Sell/Buy/
-// Margin) are identical either way; only the per-item breakdown differs.
-// displayRows: from buildLineItemDisplayRows
-// freightRow: from buildFreightLineItem
-function buildLandedLineItemRows(displayRows, freightRow) {
-  const freightBuyTotal = freightRow.buyUnitPriceUsd;
-  const freightSellTotal = freightRow.sellUnitPriceUsd;
-
-  return displayRows.map((row) => {
-    if (!row.sourced) return row;
-
-    const freightShare = freightBuyTotal > 0 && row.freightUnitUsd != null ? row.freightUnitUsd / freightBuyTotal : 0;
-    const landedFreightSellPerUnit = freightSellTotal != null ? freightSellTotal * freightShare : null;
-
-    const landedBuyUnitPriceUsd = row.buyUnitPriceUsd == null ? null : row.buyUnitPriceUsd + (row.freightUnitUsd || 0);
-    const landedSellUnitPriceUsd =
-      row.sellUnitPriceUsd == null || landedFreightSellPerUnit == null
-        ? row.sellUnitPriceUsd
-        : row.sellUnitPriceUsd + landedFreightSellPerUnit;
-
-    const { marginUnitUsd, marginPct } =
-      landedSellUnitPriceUsd != null
-        ? buildMargin(landedSellUnitPriceUsd, landedBuyUnitPriceUsd, null)
-        : { marginUnitUsd: null, marginPct: null };
-
-    return {
-      ...row,
-      buyUnitPriceUsd: landedBuyUnitPriceUsd,
-      sellUnitPriceUsd: landedSellUnitPriceUsd,
-      marginUnitUsd,
-      marginPct,
-    };
-  });
-}
-
-// Print-safe alternative to buildLandedLineItemRows, used only by the
-// customer-facing print document (quoteIntake.js's print route) when a
-// quote's saved freight_display_mode is 'included'. That document's
-// queries (quotePrintQueries.js) deliberately have no join path to buy
-// price or freight cost at all — so unlike the live screen view, this
-// can't use a cost-based weight-share ratio (buildLandedLineItemRows'
-// freightUnitUsd/freightBuyTotal, derived from each freight quote's own
-// price). This folds using physical weight alone instead. In the common
-// single-freight-quote case that's the exact same split as the screen
-// view (freight quote price cancels out of the ratio algebraically); if
-// a quote spans multiple freight quotes at different per-kg rates, this
-// is a close weight-based approximation rather than an exact match —
-// the tradeoff for keeping this document's confidentiality guarantee
-// intact (never let freight cost data reach it either).
-// lineItems: [{ rfq_line_item_id, quantity, sell_unit_price_usd }]
-// weightByLineItemId: Map<rfqLineItemId, weightKg>
-function buildLandedPrintLineItems(lineItems, freightSellTotal, weightByLineItemId) {
-  const totalWeight = lineItems.reduce(
-    (sum, li) => sum + (weightByLineItemId.get(li.rfq_line_item_id) || 0) * li.quantity,
-    0
-  );
-
-  return lineItems.map((li) => {
-    const lineWeight = (weightByLineItemId.get(li.rfq_line_item_id) || 0) * li.quantity;
-    const share = totalWeight > 0 ? lineWeight / totalWeight : 0;
-    const landedSellUnitPriceUsd = li.sell_unit_price_usd + (freightSellTotal * share) / li.quantity;
-    return { ...li, sell_unit_price_usd: landedSellUnitPriceUsd };
-  });
+// The reverse direction of "Included in items" mode: the sales rep types
+// one combined (item + freight) sell price per line directly — this
+// derives what PURE item price to store underneath it, since
+// quote_line_items.unit_price_usd must always stay freight-free (order
+// conversion's PO total and the Order detail page's per-line margin both
+// assume that — see schema.js). The freight portion subtracted out is
+// anchored to that line's own real freight cost (freightUnitUsd) marked
+// up at the same FREIGHT_MARKUP_PCT the separate-mode Freight line
+// already uses (via suggestSellPrice(0, freightUnitUsd), which applies
+// only the freight markup) — NOT a proportional share of whatever the
+// rep typed, so the split is stable and doesn't move underneath them no
+// matter what combined number they choose. combinedSellUsd is stored
+// as-is, unchanged, in landed_sell_price_usd — never recomputed again.
+function deriveItemSellFromCombined(combinedSellUsd, freightUnitUsd) {
+  if (combinedSellUsd == null) return { itemSellUsd: null, freightPortionUsd: null };
+  const freightPortionUsd = suggestSellPrice(0, freightUnitUsd);
+  return { itemSellUsd: combinedSellUsd - freightPortionUsd, freightPortionUsd };
 }
 
 module.exports = {
@@ -342,11 +300,10 @@ module.exports = {
   buildMargin,
   parseSellPriceInput,
   suggestSellPrice,
+  deriveItemSellFromCombined,
   FREIGHT_LINE_ITEM_CODE,
   buildFreightLineTotal,
   buildFreightLineItem,
   buildLineItemDisplayRows,
-  buildLandedLineItemRows,
-  buildLandedPrintLineItems,
   buildTotals,
 };

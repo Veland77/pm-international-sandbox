@@ -10,6 +10,14 @@
 // to whichever quote version was active at conversion time, and nothing
 // propagates a later quote edit into it, so allowing further revisions
 // past that point would be misleading rather than useful.
+//
+// The form always renders BOTH field sets (item + freight, for "As its
+// own line"; one combined field per item, for "Included in items") —
+// quoteBuild.js toggles which is visible/active client-side based on the
+// freight_display_mode radio, no page reload. Whichever set was active
+// on submit is what gets saved; see deriveItemSellFromCombined in
+// marginCalc.js for how "Included in items" mode's combined numbers get
+// split into a stored pure item price + the stored combined number.
 
 const express = require("express");
 const { getDb } = require("../db/connection");
@@ -20,9 +28,9 @@ const {
   buildLineItemDisplayRows,
   buildTotals,
   suggestSellPrice,
+  deriveItemSellFromCombined,
   buildFreightLineTotal,
   buildFreightLineItem,
-  buildLandedPrintLineItems,
   FREIGHT_LINE_ITEM_CODE,
 } = require("../db/marginCalc");
 const { createQuote, updateDraftQuote, markQuoteAsSent, createQuoteVersion } = require("../db/quoteBuildQueries");
@@ -38,7 +46,8 @@ const { quotePrintPage } = require("../views/quotePrintPage");
 
 const router = express.Router();
 
-// The Sell Price fields submit as "sell_price[li<rfqLineItemId>]" — see
+// The Sell Price fields submit as "sell_price[li<rfqLineItemId>]" (and the
+// combined-mode fields as "landed_sell_price[li<rfqLineItemId>]") — see
 // quoteNewForm.js for why the "li" prefix is there (it stops express's
 // body parser from silently reinterpreting the bracket group as a
 // position-indexed array once every key in it looks like a plain number).
@@ -59,6 +68,36 @@ function loadContext(db, rfqId) {
   return { rfq, allLineItems, lineCosts };
 }
 
+// Builds the "Included in items" combined-price prefill for every sourced
+// line: an existing quote's own saved landed_sell_price_usd wins outright;
+// otherwise, if the rep already has a pure sell price for this line (from
+// a "separate"-mode quote being switched to "included"), the suggestion
+// preserves THAT considered price plus a suggested freight portion,
+// rather than resetting it to the raw 30%-markup formula; a brand new
+// line gets the full suggestSellPrice(buy, freight) suggestion.
+function buildLandedSellPriceFormValues(context, existingSellByLineItemId, existingLandedByLineItemId) {
+  const values = {};
+  context.allLineItems.forEach((li) => {
+    if (li.supplier_id == null) return;
+    const existingLanded = existingLandedByLineItemId.get(li.rfq_line_item_id);
+    if (existingLanded != null) {
+      values[li.rfq_line_item_id] = String(existingLanded);
+      return;
+    }
+    const costs = context.lineCosts.get(li.rfq_line_item_id);
+    const existingSell = existingSellByLineItemId.get(li.rfq_line_item_id);
+    if (existingSell != null && costs) {
+      values[li.rfq_line_item_id] = (existingSell + suggestSellPrice(0, costs.freightUnitUsd)).toFixed(2);
+      return;
+    }
+    const suggested = costs ? suggestSellPrice(costs.buyUnitPriceUsd, costs.freightUnitUsd) : null;
+    if (suggested != null) {
+      values[li.rfq_line_item_id] = suggested.toFixed(2);
+    }
+  });
+  return values;
+}
+
 router.get("/:id/quote/new", (req, res) => {
   const db = getDb();
   const context = loadContext(db, req.params.id);
@@ -75,6 +114,7 @@ router.get("/:id/quote/new", (req, res) => {
 
   const existingLines = existingQuote ? getQuoteLineItems(db, existingQuote.id) : [];
   const existingSellByLineItemId = new Map(existingLines.map((l) => [l.rfq_line_item_id, l.unit_price_usd]));
+  const existingLandedByLineItemId = new Map(existingLines.map((l) => [l.rfq_line_item_id, l.landed_sell_price_usd]));
 
   // Sourced lines with no existing quote get a suggested sell price (item
   // cost marked up alone — freight carries its own markup on its own
@@ -94,6 +134,7 @@ router.get("/:id/quote/new", (req, res) => {
       sellPriceFormValues[li.rfq_line_item_id] = suggested.toFixed(2);
     }
   });
+  const landedSellPriceFormValues = buildLandedSellPriceFormValues(context, existingSellByLineItemId, existingLandedByLineItemId);
 
   // Same suggested-vs-saved rule as every item line: an existing quote's
   // saved freight_sell_price_usd wins; otherwise default to the freight
@@ -107,7 +148,15 @@ router.get("/:id/quote/new", (req, res) => {
   const freightRow = buildFreightLineItem(context.allLineItems, context.lineCosts, freightSellRaw);
 
   const displayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, sellPriceFormValues);
-  const totals = buildTotals([...displayRows, freightRow]);
+  const combinedDisplayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, landedSellPriceFormValues, {
+    marginIncludesFreight: true,
+  });
+
+  const freightDisplayMode = existingQuote ? existingQuote.freight_display_mode : "separate";
+  const totals =
+    freightDisplayMode === "included"
+      ? buildTotals(landedRowsForTotals(combinedDisplayRows))
+      : buildTotals([...displayRows, freightRow]);
 
   const defaultValidUntil = existingQuote
     ? existingQuote.valid_until
@@ -118,17 +167,30 @@ router.get("/:id/quote/new", (req, res) => {
       rfq: context.rfq,
       mode,
       displayRows,
+      combinedDisplayRows,
       freightRow,
       totals,
       formValues: {
         valid_until: defaultValidUntil,
         promised_delivery_date: existingQuote ? existingQuote.promised_delivery_date || "" : "",
-        freight_display_mode: existingQuote ? existingQuote.freight_display_mode : "separate",
+        freight_display_mode: freightDisplayMode,
       },
       errors: [],
     })
   );
 });
+
+// buildTotals expects each row's own buyUnitPriceUsd to already be
+// "total cost" for that row — for the combined-mode preview that means
+// buy + that line's own freight cost folded in too, so Total Sell minus
+// Total Buy comes out as the same all-in margin the per-row cells show
+// (see buildLineItemDisplayRows's marginIncludesFreight option), not an
+// inflated one that forgot to subtract freight cost.
+function landedRowsForTotals(combinedDisplayRows) {
+  return combinedDisplayRows.map((row) =>
+    row.sourced ? { ...row, buyUnitPriceUsd: row.buyUnitPriceUsd == null ? null : row.buyUnitPriceUsd + (row.freightUnitUsd || 0) } : row
+  );
+}
 
 router.post("/:id/quote/new", (req, res) => {
   const db = getDb();
@@ -147,6 +209,7 @@ router.post("/:id/quote/new", (req, res) => {
   const validUntil = req.body.valid_until;
   const promisedDeliveryDate = req.body.promised_delivery_date || null;
   const sellPriceFormValues = normalizeSellPriceFields(req.body.sell_price);
+  const landedSellPriceFormValues = normalizeSellPriceFields(req.body.landed_sell_price);
   const freightSellRaw = req.body.freight_sell_price;
   const freightDisplayMode = req.body.freight_display_mode === "included" ? "included" : "separate";
   const confirmNegativeMargin = req.body.confirm_negative_margin === "on";
@@ -161,26 +224,35 @@ router.post("/:id/quote/new", (req, res) => {
 
   const displayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, sellPriceFormValues);
   const freightRow = buildFreightLineItem(context.allLineItems, context.lineCosts, freightSellRaw);
-  const allRows = [...displayRows, freightRow];
+  const combinedDisplayRows = buildLineItemDisplayRows(context.allLineItems, context.lineCosts, landedSellPriceFormValues, {
+    marginIncludesFreight: true,
+  });
 
-  allRows.forEach((row) => {
+  // Only the field set that's actually active (matching freightDisplayMode)
+  // is validated/saved — the other one may still hold stale/suggested
+  // values that were never meant to be submitted.
+  const activeRows = freightDisplayMode === "included" ? combinedDisplayRows : [...displayRows, freightRow];
+
+  activeRows.forEach((row) => {
     if (row.sourced && row.sellUnitPriceUsd == null) {
       errors.push(`Enter a sell price for "${row.description}".`);
     }
   });
 
-  const hasNegativeMargin = allRows.some((row) => row.sourced && row.marginUnitUsd != null && row.marginUnitUsd < 0);
+  const hasNegativeMargin = activeRows.some((row) => row.sourced && row.marginUnitUsd != null && row.marginUnitUsd < 0);
   if (errors.length === 0 && hasNegativeMargin && !confirmNegativeMargin) {
     errors.push("One or more lines have a negative margin — check the confirmation box below to save anyway.");
   }
 
   if (errors.length > 0) {
-    const totals = buildTotals(allRows);
+    const totals =
+      freightDisplayMode === "included" ? buildTotals(landedRowsForTotals(combinedDisplayRows)) : buildTotals([...displayRows, freightRow]);
     return res.status(400).send(
       quoteNewFormPage({
         rfq: context.rfq,
         mode,
         displayRows,
+        combinedDisplayRows,
         freightRow,
         totals,
         formValues: {
@@ -195,18 +267,41 @@ router.post("/:id/quote/new", (req, res) => {
     );
   }
 
-  const lines = displayRows
-    .filter((row) => row.sourced)
-    .map((row) => {
-      const sourcedRow = context.allLineItems.find((li) => li.rfq_line_item_id === row.rfqLineItemId);
-      return {
-        rfqLineItemId: row.rfqLineItemId,
-        sellUnitPriceUsd: row.sellUnitPriceUsd,
-        leadTimeDays: sourcedRow.lead_time_days,
-        targetMarginPct: row.marginPct == null ? 0 : row.marginPct,
-      };
-    });
-  const freightSellPriceUsd = freightRow.sellUnitPriceUsd;
+  let lines;
+  let freightSellPriceUsd;
+
+  if (freightDisplayMode === "included") {
+    let freightTotal = 0;
+    lines = combinedDisplayRows
+      .filter((row) => row.sourced)
+      .map((row) => {
+        const sourcedRow = context.allLineItems.find((li) => li.rfq_line_item_id === row.rfqLineItemId);
+        const { itemSellUsd, freightPortionUsd } = deriveItemSellFromCombined(row.sellUnitPriceUsd, row.freightUnitUsd);
+        freightTotal += (freightPortionUsd || 0) * row.quantity;
+        return {
+          rfqLineItemId: row.rfqLineItemId,
+          sellUnitPriceUsd: itemSellUsd,
+          landedSellPriceUsd: row.sellUnitPriceUsd,
+          leadTimeDays: sourcedRow.lead_time_days,
+          targetMarginPct: row.marginPct == null ? 0 : row.marginPct,
+        };
+      });
+    freightSellPriceUsd = freightTotal;
+  } else {
+    lines = displayRows
+      .filter((row) => row.sourced)
+      .map((row) => {
+        const sourcedRow = context.allLineItems.find((li) => li.rfq_line_item_id === row.rfqLineItemId);
+        return {
+          rfqLineItemId: row.rfqLineItemId,
+          sellUnitPriceUsd: row.sellUnitPriceUsd,
+          landedSellPriceUsd: null,
+          leadTimeDays: sourcedRow.lead_time_days,
+          targetMarginPct: row.marginPct == null ? 0 : row.marginPct,
+        };
+      });
+    freightSellPriceUsd = freightRow.sellUnitPriceUsd;
+  }
 
   if (mode === "create") {
     createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines });
@@ -243,9 +338,9 @@ router.post("/:id/quote/mark-sent", (req, res) => {
 // current or superseded, prints its own document for negotiation
 // traceability (see the Quote History list on the RFQ detail page).
 // Renders in whichever freight_display_mode that version was actually
-// saved/sent in — a real, deliberate part of the sent quote now, not a
-// live viewing toggle, so the print doc has to match it rather than
-// always forcing "separate" the way it used to.
+// saved/sent in — for "included", landed_sell_price_usd is read directly
+// per line (the exact number the sales rep saved, no folding/computation
+// needed here at all).
 router.get("/:id/quote/:quoteId/print", (req, res) => {
   const db = getDb();
   const rfq = getRfqById(db, req.params.id);
@@ -258,41 +353,33 @@ router.get("/:id/quote/:quoteId/print", (req, res) => {
     return res.status(404).send("Quote not found");
   }
 
-  const rawLineItems = getQuoteLineItemsForPrint(db, quote.id);
-  const shipmentSizeLineItems = getQuoteShipmentSizeLineItemsForPrint(db, rfq.id);
+  const includedMode = quote.freight_display_mode === "included";
 
-  let lineItems;
-  let freightLine = null;
+  const lineItems = getQuoteLineItemsForPrint(db, quote.id).map((li) => {
+    const sellUnitPriceUsd = includedMode && li.landed_sell_price_usd != null ? li.landed_sell_price_usd : li.sell_unit_price_usd;
+    return { ...li, sell_unit_price_usd: sellUnitPriceUsd, totalSellUsd: sellUnitPriceUsd * li.quantity };
+  });
 
-  if (quote.freight_display_mode === "included" && quote.freight_sell_price_usd != null) {
-    // Folded into each item — weight-only allocation (see
-    // buildLandedPrintLineItems for why this can't reuse the live
-    // screen's cost-based ratio). No separate Freight row at all.
-    const weightByLineItemId = new Map(shipmentSizeLineItems.map((li) => [li.rfq_line_item_id, li.weight_kg]));
-    lineItems = buildLandedPrintLineItems(rawLineItems, quote.freight_sell_price_usd, weightByLineItemId).map((li) => ({
-      ...li,
-      totalSellUsd: li.sell_unit_price_usd * li.quantity,
-    }));
-  } else {
-    lineItems = rawLineItems.map((li) => ({ ...li, totalSellUsd: li.sell_unit_price_usd * li.quantity }));
-    // Same "only shows if actually saved" rule as an item line — a quote
-    // created before the Freight line existed has no freight_sell_price_usd
-    // yet, so nothing renders here for it rather than a misleading blank row.
-    freightLine =
-      quote.freight_sell_price_usd == null
-        ? null
-        : {
-            description: `Freight (${FREIGHT_LINE_ITEM_CODE})`,
-            quantity: 1,
-            unit: "Shipment",
-            sell_unit_price_usd: quote.freight_sell_price_usd,
-            totalSellUsd: quote.freight_sell_price_usd,
-          };
-  }
+  // Same "only shows if actually saved" rule as an item line — a quote
+  // created before the Freight line existed has no freight_sell_price_usd
+  // yet, so nothing renders here for it rather than a misleading blank row.
+  // Never shown at all in "included" mode — it's already folded into each
+  // item line above.
+  const freightLine =
+    includedMode || quote.freight_sell_price_usd == null
+      ? null
+      : {
+          description: `Freight (${FREIGHT_LINE_ITEM_CODE})`,
+          quantity: 1,
+          unit: "Shipment",
+          sell_unit_price_usd: quote.freight_sell_price_usd,
+          totalSellUsd: quote.freight_sell_price_usd,
+        };
 
   const grandTotalUsd =
     lineItems.reduce((sum, li) => sum + li.totalSellUsd, 0) + (freightLine ? freightLine.totalSellUsd : 0);
 
+  const shipmentSizeLineItems = getQuoteShipmentSizeLineItemsForPrint(db, rfq.id);
   const shipmentSizeEstimate = buildShipmentSizeEstimate(shipmentSizeLineItems);
 
   res.send(quotePrintPage({ quote, lineItems, freightLine, grandTotalUsd, shipmentSizeEstimate }));

@@ -10,12 +10,11 @@ const {
   buildMargin,
   parseSellPriceInput,
   suggestSellPrice,
+  deriveItemSellFromCombined,
   FREIGHT_LINE_ITEM_CODE,
   buildFreightLineTotal,
   buildFreightLineItem,
   buildLineItemDisplayRows,
-  buildLandedLineItemRows,
-  buildLandedPrintLineItems,
   buildTotals,
 } = require("../src/db/marginCalc");
 
@@ -287,99 +286,41 @@ test("buildFreightLineItem accepts a comma-decimal sell price, same as an item l
   assert.equal(row.sellUnitPriceUsd, 175);
 });
 
-test("buildLandedLineItemRows folds each item's weight-share of freight buy/sell into its own buy/sell, matching totals with the separate-line view", () => {
-  // A (10kg x 1 = 10kg) and B (20kg x 1 = 20kg) — A carries 1/3 of the
-  // $300 freight buy, B carries 2/3, same shares used for the freight
-  // line's $450 sell price.
-  const displayRows = [
-    { rfqLineItemId: "A", sourced: true, quantity: 1, buyUnitPriceUsd: 80, freightUnitUsd: 100, sellUnitPriceUsd: 130, marginUnitUsd: 50, marginPct: 38.46 },
-    { rfqLineItemId: "B", sourced: true, quantity: 1, buyUnitPriceUsd: 60, freightUnitUsd: 200, sellUnitPriceUsd: 90, marginUnitUsd: 30, marginPct: 33.33 },
+test("deriveItemSellFromCombined subtracts a freight portion (cost marked up at FREIGHT_MARKUP_PCT) from the typed combined price", () => {
+  const { itemSellUsd, freightPortionUsd } = deriveItemSellFromCombined(150, 20);
+  assert.equal(freightPortionUsd, 20 * 1.15);
+  assert.equal(itemSellUsd, 150 - 20 * 1.15);
+});
+
+test("deriveItemSellFromCombined treats a null freight cost (not yet arranged) as a $0 portion — the whole combined price is the item's", () => {
+  const { itemSellUsd, freightPortionUsd } = deriveItemSellFromCombined(150, null);
+  assert.equal(freightPortionUsd, 0);
+  assert.equal(itemSellUsd, 150);
+});
+
+test("deriveItemSellFromCombined returns nulls when no combined price was entered", () => {
+  const result = deriveItemSellFromCombined(null, 20);
+  assert.equal(result.itemSellUsd, null);
+  assert.equal(result.freightPortionUsd, null);
+});
+
+test("deriveItemSellFromCombined's freight portion is anchored to real freight cost, not a share of whatever was typed — stable regardless of the combined price chosen", () => {
+  const low = deriveItemSellFromCombined(120, 20);
+  const high = deriveItemSellFromCombined(500, 20);
+  assert.equal(low.freightPortionUsd, high.freightPortionUsd); // same freight cost -> same portion, whatever the sales rep typed
+  assert.equal(high.itemSellUsd - low.itemSellUsd, 500 - 120); // the entire difference lands on the item's own implied price
+});
+
+test("buildLineItemDisplayRows with marginIncludesFreight checks margin against buy + freight cost, not buy alone", () => {
+  const allLineItems = [
+    { rfq_line_item_id: 1, description: "Combined-mode Line", quantity: 1, unit: "EA", supplier_id: 5, supplier_name: "Vendor A" },
   ];
-  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 300, sellUnitPriceUsd: 450, quantity: 1 };
+  const lineCosts = new Map([[1, { buyUnitPriceUsd: 80, freightUnitUsd: 20 }]]);
 
-  const landed = buildLandedLineItemRows(displayRows, freightRow);
-  const a = landed.find((r) => r.rfqLineItemId === "A");
-  const b = landed.find((r) => r.rfqLineItemId === "B");
+  const defaultRows = buildLineItemDisplayRows(allLineItems, lineCosts, { 1: "150" });
+  assert.equal(defaultRows[0].marginUnitUsd, 70); // 150 - 80, freight excluded (unchanged default behavior)
 
-  assert.equal(a.buyUnitPriceUsd, 80 + 100); // item buy + its own freight share
-  assert.equal(a.sellUnitPriceUsd, 130 + 450 * (100 / 300)); // + its 1/3 share of freight sell
-  assert.equal(a.marginUnitUsd, a.sellUnitPriceUsd - a.buyUnitPriceUsd);
-
-  assert.equal(b.buyUnitPriceUsd, 60 + 200);
-  assert.equal(b.sellUnitPriceUsd, 90 + 450 * (200 / 300));
-  assert.equal(b.marginUnitUsd, b.sellUnitPriceUsd - b.buyUnitPriceUsd);
-
-  // Same total sell/buy/margin as the separate-line view — this is the
-  // whole point: a different split of the same numbers, not new math.
-  const landedTotalSell = a.sellUnitPriceUsd + b.sellUnitPriceUsd;
-  const landedTotalBuy = a.buyUnitPriceUsd + b.buyUnitPriceUsd;
-  const separateTotalSell = 130 + 90 + 450;
-  const separateTotalBuy = 80 + 60 + 300;
-  assert.equal(landedTotalSell, separateTotalSell);
-  assert.equal(landedTotalBuy, separateTotalBuy);
-});
-
-test("buildLandedLineItemRows leaves an unsourced row untouched", () => {
-  const displayRows = [{ rfqLineItemId: "X", sourced: false, description: "Unsourced" }];
-  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 100, sellUnitPriceUsd: 115, quantity: 1 };
-  const landed = buildLandedLineItemRows(displayRows, freightRow);
-  assert.deepEqual(landed[0], displayRows[0]);
-});
-
-test("buildLandedLineItemRows leaves an item with no freight arranged unchanged — nothing to fold in", () => {
-  const displayRows = [
-    { rfqLineItemId: "A", sourced: true, quantity: 1, buyUnitPriceUsd: 80, freightUnitUsd: null, sellUnitPriceUsd: 130 },
-  ];
-  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 0, sellUnitPriceUsd: 0, quantity: 1 };
-  const landed = buildLandedLineItemRows(displayRows, freightRow);
-  assert.equal(landed[0].buyUnitPriceUsd, 80);
-  assert.equal(landed[0].sellUnitPriceUsd, 130);
-});
-
-test("buildLandedLineItemRows falls back to the item's own sell price when the freight line has no saved sell price yet", () => {
-  const displayRows = [
-    { rfqLineItemId: "A", sourced: true, quantity: 1, buyUnitPriceUsd: 80, freightUnitUsd: 20, sellUnitPriceUsd: 130 },
-  ];
-  const freightRow = { isFreightLine: true, buyUnitPriceUsd: 20, sellUnitPriceUsd: null, quantity: 1 };
-  const landed = buildLandedLineItemRows(displayRows, freightRow);
-  assert.equal(landed[0].buyUnitPriceUsd, 100); // buy price still folds in, it's never null
-  assert.equal(landed[0].sellUnitPriceUsd, 130); // sell falls back — nothing to allocate yet
-});
-
-test("buildLandedPrintLineItems folds freight into each item purely by weight share — no cost/price figure needed", () => {
-  // A (10kg x 1 = 10kg) and B (20kg x 1 = 20kg) — 30kg total, so A takes
-  // 1/3 of the $450 freight sell and B takes 2/3, same shares
-  // buildLandedLineItemRows would produce in the single-freight-quote case.
-  const lineItems = [
-    { rfq_line_item_id: "A", quantity: 1, sell_unit_price_usd: 130 },
-    { rfq_line_item_id: "B", quantity: 1, sell_unit_price_usd: 90 },
-  ];
-  const weightByLineItemId = new Map([
-    ["A", 10],
-    ["B", 20],
-  ]);
-
-  const landed = buildLandedPrintLineItems(lineItems, 450, weightByLineItemId);
-  const a = landed.find((li) => li.rfq_line_item_id === "A");
-  const b = landed.find((li) => li.rfq_line_item_id === "B");
-
-  assert.equal(a.sell_unit_price_usd, 130 + 450 * (10 / 30));
-  assert.equal(b.sell_unit_price_usd, 90 + 450 * (20 / 30));
-});
-
-test("buildLandedPrintLineItems splits evenly when no weight data is available for any line — never divides by zero", () => {
-  const lineItems = [
-    { rfq_line_item_id: "A", quantity: 1, sell_unit_price_usd: 100 },
-    { rfq_line_item_id: "B", quantity: 1, sell_unit_price_usd: 100 },
-  ];
-  const landed = buildLandedPrintLineItems(lineItems, 200, new Map());
-  assert.equal(landed[0].sell_unit_price_usd, 100); // 0 share of $200 — unchanged, not NaN
-  assert.equal(landed[1].sell_unit_price_usd, 100);
-});
-
-test("buildLandedPrintLineItems divides a multi-unit line's folded freight share across its own quantity", () => {
-  const lineItems = [{ rfq_line_item_id: "A", quantity: 5, sell_unit_price_usd: 20 }];
-  const weightByLineItemId = new Map([["A", 4]]); // 4kg x 5 units = 20kg, the only line — takes all $100
-  const landed = buildLandedPrintLineItems(lineItems, 100, weightByLineItemId);
-  assert.equal(landed[0].sell_unit_price_usd, 20 + 100 / 5);
+  const allInRows = buildLineItemDisplayRows(allLineItems, lineCosts, { 1: "150" }, { marginIncludesFreight: true });
+  assert.equal(allInRows[0].marginUnitUsd, 50); // 150 - (80 + 20)
+  assert.equal(allInRows[0].sellUnitPriceUsd, 150); // the combined price itself is never altered, only how margin reads it
 });

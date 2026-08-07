@@ -224,6 +224,31 @@ test("createQuoteVersion supersedes the prior version and creates the next versi
   assert.deepEqual(priorLinesAfter, priorLines);
 });
 
+test("createQuote stores landed_sell_price_usd exactly as given for an 'included' mode line, alongside the derived pure item price — and leaves it null for a 'separate' mode line", () => {
+  const includedQuoteId = createQuote(db, {
+    rfqId,
+    validUntil: "2026-09-01",
+    freightSellPriceUsd: 30,
+    freightDisplayMode: "included",
+    lines: [
+      { rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 96.5, landedSellPriceUsd: 130, leadTimeDays: 12, targetMarginPct: 26 },
+    ],
+  });
+  const includedLines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(includedQuoteId);
+  assert.equal(includedLines[0].unit_price_usd, 96.5); // the derived pure item price, stored as given
+  assert.equal(includedLines[0].landed_sell_price_usd, 130); // the exact combined number, stored as-is
+
+  const separateQuoteId = createQuote(db, {
+    rfqId,
+    validUntil: "2026-09-15",
+    freightSellPriceUsd: 45,
+    freightDisplayMode: "separate",
+    lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 120, leadTimeDays: 12, targetMarginPct: 20 }],
+  });
+  const separateLines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(separateQuoteId);
+  assert.equal(separateLines[0].landed_sell_price_usd, null);
+});
+
 test.after(() => {
   db.close();
   fs.rmSync(scratchDbPath, { force: true });

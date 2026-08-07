@@ -385,8 +385,9 @@ function supplierComparisonSection(rows) {
 // row) — the sales rep's own choice, saved on the quote at create/revise
 // time (schema.js's freight_display_mode), not a live viewing toggle
 // anymore. quoteDisplayRows is already the right shape for whichever
-// mode was saved (see rfqs.js: buildLandedLineItemRows for "included",
-// plain displayRows otherwise) — this just labels which one is showing.
+// mode was saved (see rfqs.js: each line's own landed_sell_price_usd for
+// "included", plain displayRows otherwise) — this just labels which one
+// is showing.
 function freightDisplayModeNote(freightDisplayMode) {
   const label = freightDisplayMode === "included" ? "included in item prices" : "as its own line";
   return `<p style="color: var(--color-text-muted);">Freight shown: ${label}</p>`;
@@ -413,27 +414,33 @@ function quoteActions(rfq, quote, order) {
 // only, deliberately no buy price/margin: buy price depends on CURRENT
 // sourcing, which isn't itself versioned, so computing "margin" for an
 // old version against today's sourcing could show a number that never
-// actually applied when that version was sent. Each entry is its own
-// <details> so the page doesn't get crowded by default; each links to
-// its own print document.
+// actually applied when that version was sent. Each version's own
+// freight_display_mode decides what to show per line: "included" reads
+// landed_sell_price_usd directly (the exact combined number that was
+// saved/sent, no separate Freight row) — "separate" shows the item's own
+// unit_price_usd plus a Freight row, same as today. Each entry is its
+// own <details> so the page doesn't get crowded by default; each links
+// to its own print document.
 function quoteHistorySection(rfqId, quoteHistory) {
   if (!quoteHistory.length) return "";
 
   const entries = quoteHistory
     .map((q) => {
+      const includedMode = q.freight_display_mode === "included";
       const rows = q.lines
-        .map(
-          (l) => `
+        .map((l) => {
+          const sellUsd = includedMode && l.landed_sell_price_usd != null ? l.landed_sell_price_usd : l.unit_price_usd;
+          return `
       <tr>
         <td>${escapeHtml(l.description)}</td>
         <td>${escapeHtml(l.quantity)}</td>
         <td>${escapeHtml(l.unit)}</td>
-        <td>${escapeHtml(formatCurrency(l.unit_price_usd))}</td>
-      </tr>`
-        )
+        <td>${escapeHtml(formatCurrency(sellUsd))}</td>
+      </tr>`;
+        })
         .join("");
       const freightRowHtml =
-        q.freight_sell_price_usd == null
+        includedMode || q.freight_sell_price_usd == null
           ? ""
           : `
       <tr>

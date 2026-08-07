@@ -18,7 +18,7 @@ const {
 const { estimateArrivalDate, toUsd } = require("../db/orderSummary");
 const { getLineCostsForRfq } = require("../db/lineItemCostQueries");
 const { buildShipmentSizeEstimate } = require("../db/shipmentSizeCalc");
-const { buildLineItemDisplayRows, buildTotals, buildFreightLineItem, buildLandedLineItemRows } = require("../db/marginCalc");
+const { buildLineItemDisplayRows, buildTotals, buildFreightLineItem } = require("../db/marginCalc");
 const { getRfqAttachments } = require("../db/rfqAttachmentQueries");
 const { getCustomerFacingAttachments } = require("../db/customerFacingAttachmentQueries");
 const { getSupplierInquiryAttachments } = require("../db/supplierInquiryAttachmentQueries");
@@ -71,12 +71,24 @@ router.get("/:id", (req, res) => {
   // Order Summary above, which always stay in the default, freight-
   // exclusive shape) — the sales rep's choice, saved on the quote itself
   // at create/revise time (see schema.js), not a live viewing toggle
-  // anymore. Item/freight sell prices are still stored unfolded either
-  // way; see marginCalc.js's buildLandedLineItemRows for why applying
-  // this at render time is lossless.
+  // anymore. In "included" mode, each line's landed_sell_price_usd is the
+  // exact combined number the sales rep typed and saved — read directly,
+  // never recomputed/folded here — with margin checked against buy +
+  // that line's own freight cost (marginIncludesFreight) so it isn't
+  // inflated by the freight this price already covers.
   const freightDisplayMode = quote ? quote.freight_display_mode : "separate";
-  const quoteDisplayRows =
-    freightDisplayMode === "included" ? buildLandedLineItemRows(displayRows, freightRow) : displayRows;
+  let quoteDisplayRows = displayRows;
+  if (freightDisplayMode === "included") {
+    const landedSellPriceFormValues = {};
+    quoteLineItems.forEach((qli) => {
+      if (qli.landed_sell_price_usd != null) {
+        landedSellPriceFormValues[qli.rfq_line_item_id] = String(qli.landed_sell_price_usd);
+      }
+    });
+    quoteDisplayRows = buildLineItemDisplayRows(allLineItems, lineCosts, landedSellPriceFormValues, {
+      marginIncludesFreight: true,
+    });
+  }
 
   const rates = getCurrencyRates(db);
   const rateMap = new Map(rates.map((r) => [r.currency_code, r.rate_to_usd]));

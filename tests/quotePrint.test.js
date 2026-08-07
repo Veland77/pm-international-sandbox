@@ -99,8 +99,8 @@ const quoteId = db
   .run("Q-TEST-9", rfqId, 1, "Sent", "2026-01-05", "2026-03-01", "2026-04-01", 75).lastInsertRowid;
 
 db.prepare(
-  "INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct) VALUES (?, ?, ?, ?, ?)"
-).run(quoteId, lineItemId, 145, 12, 20);
+  "INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, landed_sell_price_usd, lead_time_days, target_margin_pct) VALUES (?, ?, ?, ?, ?, ?)"
+).run(quoteId, lineItemId, 145, null, 12, 20);
 
 test("getQuoteForPrint returns customer identity and quote metadata — customer identity is fine here", () => {
   const quote = getQuoteForPrint(db, quoteId);
@@ -120,13 +120,37 @@ test("getQuoteForPrint never includes a buy-price-shaped field, by key or by val
   assert.ok(!JSON.stringify(quote).includes(String(CONFIDENTIAL_BUY_PRICE)));
 });
 
-test("getQuoteLineItemsForPrint returns only description/quantity/unit/sell price (plus the line item id, for weight-share matching) — no join path to buy price exists", () => {
+test("getQuoteLineItemsForPrint returns only description/quantity/unit/sell price/landed sell price — no join path to buy price exists", () => {
   const lineItems = getQuoteLineItemsForPrint(db, quoteId);
   assert.equal(lineItems.length, 1);
-  assert.equal(lineItems[0].rfq_line_item_id, lineItemId);
   assert.equal(lineItems[0].description, '4" Ball Valve');
   assert.equal(lineItems[0].quantity, 10);
   assert.equal(lineItems[0].sell_unit_price_usd, 145);
+  assert.equal(lineItems[0].landed_sell_price_usd, null); // this fixture's quote is 'separate' mode
+
+  const keys = Object.keys(lineItems[0]);
+  assert.ok(!keys.some((k) => /buy|margin/i.test(k)));
+  assert.ok(!JSON.stringify(lineItems).includes(String(CONFIDENTIAL_BUY_PRICE)));
+});
+
+// A second quote, 'included' mode this time, to prove landed_sell_price_usd
+// round-trips correctly and stays confidential-safe too.
+const includedQuoteId = db
+  .prepare(
+    `INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date, freight_sell_price_usd, freight_display_mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  )
+  .run("Q-TEST-9-INCLUDED", rfqId, 2, "Sent", "2026-01-06", "2026-03-01", "2026-04-01", 30, "included").lastInsertRowid;
+
+db.prepare(
+  "INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, landed_sell_price_usd, lead_time_days, target_margin_pct) VALUES (?, ?, ?, ?, ?, ?)"
+).run(includedQuoteId, lineItemId, 122, 168, 12, 24);
+
+test("getQuoteLineItemsForPrint returns landed_sell_price_usd for an 'included' mode quote — the exact combined price, never buy-price-shaped", () => {
+  const lineItems = getQuoteLineItemsForPrint(db, includedQuoteId);
+  assert.equal(lineItems.length, 1);
+  assert.equal(lineItems[0].sell_unit_price_usd, 122); // the underlying pure item price is still reachable...
+  assert.equal(lineItems[0].landed_sell_price_usd, 168); // ...but the print route reads this one for 'included' mode
 
   const keys = Object.keys(lineItems[0]);
   assert.ok(!keys.some((k) => /buy|margin/i.test(k)));

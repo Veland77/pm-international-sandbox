@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 23;
+const SCHEMA_VERSION = 24;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -117,13 +117,10 @@ CREATE TABLE IF NOT EXISTS quotes (
   freight_display_mode TEXT NOT NULL DEFAULT 'separate', -- 'separate' or 'included' — the sales rep's
                                    -- choice, made at save time, of whether this version shows freight as
                                    -- its own line or folded into each item's own sell price. A real part
-                                   -- of what was saved/sent, not a live viewing toggle — item and freight
-                                   -- sell prices above are always stored unfolded either way; this flag
-                                   -- only decides how they're displayed (see marginCalc.js's
-                                   -- buildLandedLineItemRows). Deliberately its own column rather than
-                                   -- inferred from whether freight_sell_price_usd is null — that column
-                                   -- is always populated once a quote is saved through the app, so it
-                                   -- can't double as this signal.
+                                   -- of what was saved/sent, not a live viewing toggle. Deliberately its
+                                   -- own column rather than inferred from whether freight_sell_price_usd
+                                   -- is null — that column is always populated once a quote is saved
+                                   -- through the app, so it can't double as this signal.
   UNIQUE (quote_number, version)
 );
 
@@ -131,7 +128,19 @@ CREATE TABLE IF NOT EXISTS quote_line_items (
   id INTEGER PRIMARY KEY,
   quote_id INTEGER NOT NULL REFERENCES quotes(id),
   rfq_line_item_id INTEGER NOT NULL REFERENCES rfq_line_items(id),
-  unit_price_usd REAL NOT NULL,
+  unit_price_usd REAL NOT NULL,   -- always the item's OWN price, freight-free — order conversion's PO
+                                   -- total and the Order detail page's per-line margin both assume this,
+                                   -- so it's never a freight-inclusive figure, even when
+                                   -- freight_display_mode is 'included' (see landed_sell_price_usd below).
+  landed_sell_price_usd REAL,     -- only set when this version's freight_display_mode is 'included' —
+                                   -- the exact combined (item + freight) sell price the sales rep typed
+                                   -- and the customer sees, stored literally and never recomputed at
+                                   -- display/print time. unit_price_usd above is then the DERIVED pure
+                                   -- price: this value minus a fixed freight portion (that line's own
+                                   -- freightUnitUsd marked up at the standard freight markup — see
+                                   -- marginCalc.js's deriveItemSellFromCombined) — anchored to real
+                                   -- freight cost, not a proportional share of whatever was typed, so the
+                                   -- split stays stable regardless of what the sales rep chooses.
   lead_time_days INTEGER NOT NULL,
   target_margin_pct REAL NOT NULL -- sales rep's target margin at quoting time, before a vendor is
                                    -- sourced; compare against the computed Gross Margin once one is
