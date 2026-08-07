@@ -171,6 +171,14 @@ Staff-editable settings, not baked into code:
 1. **Report boilerplate text** — the fixed wording on customer/vendor-facing print documents (INQ, FRQ, Quote, PO-to-vendor) should be editable by staff, not hardcoded in the view files.
 2. **Default markup percentages** — the sell-price suggestion shown when a quote is first created (`ITEM_MARKUP_PCT` = 30% on item cost, `FREIGHT_MARKUP_PCT` = 15% on freight cost, both in `src/db/marginCalc.js`'s `suggestSellPrice`) is currently hardcoded. These are only ever a starting point — sales can already override any sell price with no bound (see the Quote versioning/editing work) — but the default percentages themselves should eventually be staff-editable too, rather than requiring a code change to adjust.
 
+## Future: Cost reconciliation and job-locking financial controls
+
+Documentation only — no code changes yet. Extends the "Accounts Payable / Accounts Receivable tracking" data model gap already noted in `docs/end-to-end-process-map.md`'s gap list (item 4) with more specific detail. Not building now — this depends on that AP/AR tracking infrastructure existing first, as a prerequisite. Capturing it now so that when AP/AR tracking eventually gets designed, it's built with reconciliation and locking in mind from the start, rather than needing to be retrofitted.
+
+When a vendor's actual invoice arrives, it needs to be checked against the buy price the customer quote/margin was originally based on — not just recorded as a payable. If the vendor invoices more than planned (billing error, or genuine cost change since the quote was made), this variance needs to be caught and surfaced to a controller, not silently absorbed into whatever the books end up showing. The business then has two responses depending on the situation: absorb it as margin erosion (and log it so pricing improves over time), or issue a supplementary invoice to the customer where the contract terms allow it.
+
+This matters for a second reason beyond accuracy: without it, there's no way to catch someone quietly shifting a cost overrun from one job onto a different, more profitable job to make results look better than they are. The control for this is a job-locking rule — once a job's delivery is complete and some period has passed (proposed: 1-2 months, should be configurable, not hardcoded), no further costs can be added or edited against it. Any correction needed after that point has to be tracked against whichever job it actually belongs to, not retroactively folded into a closed one.
+
 ## Later addition: job_number, the stable end-to-end deal reference
 
 `rfqs` gains `job_number` — format `PM-100000`, generated the same way `rfq_number` is (a plain incrementing counter, `jobCounter`/`getNextJobNumber` in seed.js/rfqIntakeQueries.js respectively), assigned once at RFQ creation, never reassigned.

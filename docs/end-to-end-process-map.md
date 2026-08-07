@@ -77,7 +77,7 @@ Two branches apply across the whole flow and are called out explicitly below:
 1. **Inventory** — `inventory_items` (or similar): location (Houston/Lakeland/UK), static item number for standard stock, quantity on hand. Drives the in-stock shortcut branch.
 2. **Credit terms / risk rating** — on both `suppliers` and `accounts` — needed to decide when advance payment is required in either direction.
 3. **Proforma invoices** — a document type distinct from the final commercial invoice, usable both to request vendor advance payment and to request customer advance payment.
-4. **Accounts Payable / Accounts Receivable tracking** — actual payment status/ledger, not just invoice generation.
+4. **Accounts Payable / Accounts Receivable tracking** — actual payment status/ledger, not just invoice generation. See `phase4-sourcing-lifecycle.md`'s "Future: Cost reconciliation and job-locking financial controls" for the vendor-invoice-vs-quoted-cost reconciliation and job-locking rules this needs to be designed with from the start.
 5. **QA/ISO checklist table** — structured, checkable records (not free-text log entries) tied to `orders`, to support ISO 9001 audit trail.
 6. **Vendor quote revalidation** — a workflow (and likely a status field) around `supplier_quotes.valid_until` lapsing before PO placement.
 
