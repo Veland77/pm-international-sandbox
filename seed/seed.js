@@ -9,8 +9,10 @@ const { formCodeForLineItem, materialCodeForName, buildItemNumber, markAsNotConv
 const { SUPPLIERS, SUPPLIER_SCENARIOS_BY_RFQ_INDEX, LINE_ITEM_SOURCING_BY_RFQ_INDEX } = require("./supplierFixtures");
 const { FREIGHT_FORWARDERS } = require("./freightForwarderFixtures");
 const { seedSuppliersForRfq } = require("./seedSuppliers");
+const { FRESH_RFQ_JOBS, SOURCED_NO_QUOTE_JOBS, PENDING_PO_ORDER_JOBS } = require("./additionalJobFixtures");
 const { MILESTONE_TYPES } = require("../src/db/shipmentMilestoneTypes");
 const { saveShipmentDocument } = require("../src/storage/shipmentDocumentStorage");
+const { toUsd } = require("../src/db/orderSummary");
 
 const db = getDb();
 const seedOnlyIfEmpty = process.argv.includes("--if-empty");
@@ -115,14 +117,34 @@ const fakeStandards = [
 ];
 
 // A small catalog combining material + product form + a representative standard,
-// used to build believable RFQ line items below.
+// used to build believable RFQ line items below. `key` is only used by the
+// additional-jobs blocks near the end of this file (see catalogLineByKey) —
+// adding it here doesn't change this array's order or length, so it can't
+// affect the positional `catalogLines[(i + j) % catalogLines.length]" picks
+// the main RFQ loop and the Meridian block already make above.
 const catalogLines = [
-  { material: "Duplex Stainless Steel", form: "Pipe & Pipe Fittings", standard: "ASTM A790", description: '6" Duplex 2205 Seamless Pipe', unit: "FT", length_m: 12.2 },
-  { material: "Super Duplex Stainless Steel", form: "Flanges", standard: "ASME B16.5", description: '8" 300# Super Duplex Weld Neck Flange', unit: "EA", length_m: null },
-  { material: "Titanium", form: "Fasteners", standard: "MSS-SP-75", description: "Titanium Gr 2 Hex Bolt Set", unit: "EA", length_m: null },
-  { material: "6% Moly", form: "Valves", standard: "API 6D", description: '4" 6% Moly Ball Valve', unit: "EA", length_m: null },
-  { material: "Copper Nickel", form: "Tubing", standard: "EN 10204 3.1", description: '2" Copper Nickel 90/10 Tubing', unit: "FT", length_m: 5.8 },
+  { key: "duplexPipe", material: "Duplex Stainless Steel", form: "Pipe & Pipe Fittings", standard: "ASTM A790", description: '6" Duplex 2205 Seamless Pipe', unit: "FT", length_m: 12.2 },
+  { key: "superDuplexFlange", material: "Super Duplex Stainless Steel", form: "Flanges", standard: "ASME B16.5", description: '8" 300# Super Duplex Weld Neck Flange', unit: "EA", length_m: null },
+  { key: "titaniumFasteners", material: "Titanium", form: "Fasteners", standard: "MSS-SP-75", description: "Titanium Gr 2 Hex Bolt Set", unit: "EA", length_m: null },
+  { key: "molyValve", material: "6% Moly", form: "Valves", standard: "API 6D", description: '4" 6% Moly Ball Valve', unit: "EA", length_m: null },
+  { key: "copperNickelTubing", material: "Copper Nickel", form: "Tubing", standard: "EN 10204 3.1", description: '2" Copper Nickel 90/10 Tubing', unit: "FT", length_m: 5.8 },
 ];
+
+// Three more catalog entries, used only by the additional-jobs blocks near
+// the end of this file — kept out of `catalogLines` itself so its length
+// (and therefore the main loop's/Meridian's positional picks above) never
+// changes. Uses materials/forms/standards already declared above that the
+// original 5 catalog lines don't touch.
+const additionalCatalogLines = [
+  { key: "nickelRoundBar", material: "Nickel Alloys", form: "Round Bar", standard: "NORSOK M-650", description: "Alloy 625 Round Bar, NORSOK Qualified", unit: "FT", length_m: 6.0 },
+  { key: "alloySteelPlate", material: "AISI 4130 Alloy Steel", form: "Plate & Sheet", standard: "EN 10204 3.1", description: '1" AISI 4130 Alloy Steel Plate, Q&T', unit: "EA", length_m: null },
+  { key: "ss316Forging", material: "Stainless Steel 316", form: "Specialty Forgings", standard: "ASME B16.5", description: "Stainless Steel 316 Custom Forged Adapter", unit: "EA", length_m: null },
+];
+
+const catalogLineByKey = {};
+[...catalogLines, ...additionalCatalogLines].forEach((c) => {
+  catalogLineByKey[c.key] = c;
+});
 
 // Approximate real-world market rates (public reference data), not a live
 // feed. "1 unit of this currency equals this many USD."
@@ -149,6 +171,57 @@ function daysFromNow(days) {
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+// Milestone-progress presets for the "Group 3" order jobs near the end of
+// this file — each maps a milestone type to [estimatedOffsetDays,
+// actualOffsetDays or null, notes or null], same shape as the Delta Ridge
+// block's own milestoneDetailsByType above.
+const MILESTONE_PRESETS_BY_STAGE = {
+  early: {
+    "Production": [-6, -5, "Production underway."],
+    "Ready for Pickup/FCA": [2, null, null],
+    "Transit to Port/Airport": [6, null, null],
+    "Ocean/Air Transport": [20, null, null],
+    "Customs Clearance": [27, null, null],
+    "Final Delivery": [30, null, null],
+  },
+  mid: {
+    "Production": [-25, -24, "Production completed on schedule."],
+    "Ready for Pickup/FCA": [-20, -19, "Goods ready for pickup."],
+    "Transit to Port/Airport": [-17, -16, "Trucked to port."],
+    "Ocean/Air Transport": [5, null, "In transit."],
+    "Customs Clearance": [12, null, null],
+    "Final Delivery": [15, null, null],
+  },
+  late: {
+    "Production": [-35, -34, "Production completed on schedule."],
+    "Ready for Pickup/FCA": [-30, -29, "Goods ready for pickup."],
+    "Transit to Port/Airport": [-27, -26, "Trucked to port."],
+    "Ocean/Air Transport": [-10, -9, "Arrived at destination port."],
+    "Customs Clearance": [-3, -2, "Cleared customs."],
+    "Final Delivery": [2, null, "Final delivery scheduled."],
+  },
+  delivered: {
+    "Production": [-45, -44, "Production completed on schedule."],
+    "Ready for Pickup/FCA": [-40, -39, "Goods ready for pickup."],
+    "Transit to Port/Airport": [-37, -36, "Trucked to port."],
+    "Ocean/Air Transport": [-20, -19, "Arrived at destination port."],
+    "Customs Clearance": [-12, -11, "Cleared customs."],
+    "Final Delivery": [-5, -4, "Delivered and signed for."],
+  },
+};
+
+const ORDER_PIPELINE_STAGE_BY_MILESTONE_STAGE = {
+  early: "In Production",
+  mid: "Shipped",
+  late: "Shipped",
+  delivered: "Delivered",
+};
+
+// When a multi-vendor order's shipments are at different points, the
+// order's own single pipeline_stage reflects whichever vendor is furthest
+// along — same as a real dispatcher would report the order overall.
+const MILESTONE_STAGE_RANK = { early: 0, mid: 1, late: 2, delivered: 3 };
 
 const insertUser = db.prepare("INSERT INTO users (name, role, region) VALUES (?, ?, ?)");
 const insertAccount = db.prepare(
@@ -330,6 +403,10 @@ const seedTransaction = db.transaction(() => {
   fakeCurrencyRates.forEach((r) => {
     insertCurrencyRate.run(r.currency_code, r.rate_to_usd, r.as_of_date);
   });
+  // Used only by the Group 3 additional-jobs block below, to compute a
+  // customer sell price that's always above the selected vendor's own
+  // USD-converted buy cost — same conversion logic used live (toUsd).
+  const rateMap = new Map(fakeCurrencyRates.map((r) => [r.currency_code, r.rate_to_usd]));
 
   let rfqCounter = 1001;
   let jobCounter = 100000;
@@ -339,6 +416,9 @@ const seedTransaction = db.transaction(() => {
   let frqCounter = 7001;
   let itemNumberSequence = 1;
   const itemNumberYear = new Date().getFullYear();
+  // Rotates the sales rep assignment across every job in the three
+  // additional-jobs blocks below, independent of the main loop's own i-based assignment.
+  let extraJobCounter = 0;
 
   // Generated the same way rfq_number is: a plain incrementing counter.
   function nextInquiryNumber() {
@@ -804,6 +884,342 @@ const seedTransaction = db.transaction(() => {
   ).lastInsertRowid;
 
   insertFreightQuoteSelection.run(meridianRfqId, hanulSupplierId, meridianFreightQuoteId, daysFromNow(-1));
+
+  // --- Additional seed jobs (Group 1): fresh RFQs, nothing sent to any
+  // vendor yet — ready for "New Sourcing Inquiry" to be clicked by hand.
+  // See seed/additionalJobFixtures.js for the full list. Purely additive:
+  // doesn't touch any account/RFQ created above.
+  FRESH_RFQ_JOBS.forEach((job) => {
+    const accountId = insertAccount.run(job.accountName, job.industry, job.region, job.accountStatus).lastInsertRowid;
+    const contactId = insertContact.run(
+      accountId, job.contact.name, job.contact.title, job.contact.email, job.contact.phone
+    ).lastInsertRowid;
+    const salesRepId = userIds[extraJobCounter % userIds.length];
+    extraJobCounter++;
+
+    const rfqNumber = `RFQ-${rfqCounter++}`;
+    const jobNumber = nextJobNumber();
+    const createdDate = daysFromNow(-3);
+    const rfqId = insertRfq.run(
+      rfqNumber,
+      jobNumber,
+      accountId,
+      contactId,
+      salesRepId,
+      `${job.accountName.split(" ")[0]} ${job.projectSuffix}`,
+      "New",
+      "New",
+      createdDate,
+      daysFromNow(21),
+      daysFromNow(55)
+    ).lastInsertRowid;
+
+    job.lines.forEach((line) => {
+      const c = catalogLineByKey[line.key];
+      const lineId = insertRfqLine.run(
+        rfqId, materialIdByName[c.material], productFormIdByName[c.form], standardIdByCode[c.standard],
+        c.description, line.quantity, c.unit, c.length_m
+      ).lastInsertRowid;
+
+      const itemNumber = buildItemNumber({
+        formCode: formCodeForLineItem(c.form, c.description),
+        materialCode: materialCodeForName(c.material),
+        year: itemNumberYear,
+        sequence: itemNumberSequence++,
+      });
+      insertItemNumber.run(
+        itemNumber, lineId, productFormIdByName[c.form], materialIdByName[c.material], c.description, "Active", createdDate
+      );
+    });
+
+    insertActivity.run(rfqId, accountId, salesRepId, "Status Change", `RFQ ${rfqNumber} created and assigned.`, createdDate);
+  });
+
+  // --- Additional seed jobs (Group 2): fully sourced (vendor + freight
+  // selected), no customer quote yet — same state as the Meridian job
+  // above, ready for repeated "Create Quote" practice.
+  SOURCED_NO_QUOTE_JOBS.forEach((job) => {
+    const accountId = insertAccount.run(job.accountName, job.industry, job.region, job.accountStatus).lastInsertRowid;
+    const contactId = insertContact.run(
+      accountId, job.contact.name, job.contact.title, job.contact.email, job.contact.phone
+    ).lastInsertRowid;
+    const salesRepId = userIds[extraJobCounter % userIds.length];
+    extraJobCounter++;
+
+    const rfqNumber = `RFQ-${rfqCounter++}`;
+    const jobNumber = nextJobNumber();
+    const createdDate = daysFromNow(-6);
+    const rfqId = insertRfq.run(
+      rfqNumber,
+      jobNumber,
+      accountId,
+      contactId,
+      salesRepId,
+      `${job.accountName.split(" ")[0]} ${job.projectSuffix}`,
+      "Quoting",
+      "Sourcing",
+      createdDate,
+      daysFromNow(17),
+      daysFromNow(50)
+    ).lastInsertRowid;
+
+    insertActivity.run(rfqId, accountId, salesRepId, "Status Change", `RFQ ${rfqNumber} created and assigned.`, createdDate);
+
+    const lineItems = job.lines.map((line) => {
+      const c = catalogLineByKey[line.key];
+      const lineId = insertRfqLine.run(
+        rfqId, materialIdByName[c.material], productFormIdByName[c.form], standardIdByCode[c.standard],
+        c.description, line.quantity, c.unit, c.length_m
+      ).lastInsertRowid;
+
+      const itemNumber = buildItemNumber({
+        formCode: formCodeForLineItem(c.form, c.description),
+        materialCode: materialCodeForName(c.material),
+        year: itemNumberYear,
+        sequence: itemNumberSequence++,
+      });
+      insertItemNumber.run(
+        itemNumber, lineId, productFormIdByName[c.form], materialIdByName[c.material], c.description, "Active", createdDate
+      );
+
+      return { id: lineId, quantity: line.quantity };
+    });
+
+    seedSuppliersForRfq(
+      db,
+      supplierIds,
+      {
+        rfqId,
+        lineItems,
+        quoteId: null,
+        dates: {
+          sentDate: daysFromNow(-5),
+          receivedDate: daysFromNow(-3),
+          validUntil: daysFromNow(55),
+          selectedDate: daysFromNow(-1),
+        },
+        nextInquiryNumber,
+      },
+      [
+        {
+          supplierIndex: job.supplierIndex,
+          outreachStatus: "Quoted",
+          availability: job.availability,
+          leadTimeDays: job.leadTimeDays,
+          unitPrices: job.unitPrices,
+          currency: job.currency,
+          estimatedTransitDays: job.estimatedTransitDays,
+        },
+      ],
+      lineItems.map(() => job.supplierIndex)
+    );
+
+    const freightInquiryId = insertFreightInquiry.run(
+      nextFrqNumber(), rfqId, freightForwarderIdByName[job.freightForwarderName], daysFromNow(-4), "Quoted"
+    ).lastInsertRowid;
+    lineItems.forEach((li) => insertFreightInquiryLine.run(freightInquiryId, li.id));
+
+    const freightQuoteId = insertFreightQuote.run(
+      freightInquiryId,
+      job.freightQuoteRef,
+      daysFromNow(-3),
+      job.freightPrice,
+      job.freightCurrency,
+      job.freightTransitDays,
+      daysFromNow(30),
+      job.freightNotes
+    ).lastInsertRowid;
+
+    insertFreightQuoteSelection.run(rfqId, supplierIds[job.supplierIndex], freightQuoteId, daysFromNow(-1));
+  });
+
+  // --- Additional seed jobs (Group 3): quoted, PO received, converted to
+  // an Order — with at least one vendor's PO not yet generated (seed.js
+  // never writes to vendor_po_issuances; only the app's own "Generate
+  // Purchase Order" button does), ready for repeated practice with that
+  // action. Mirrors the Delta Ridge order built above, generalized to
+  // support more than one vendor per order (see additionalJobFixtures.js).
+  PENDING_PO_ORDER_JOBS.forEach((job) => {
+    const accountId = insertAccount.run(job.accountName, job.industry, job.region, job.accountStatus).lastInsertRowid;
+    const contactId = insertContact.run(
+      accountId, job.contact.name, job.contact.title, job.contact.email, job.contact.phone
+    ).lastInsertRowid;
+    const salesRepId = userIds[extraJobCounter % userIds.length];
+    extraJobCounter++;
+
+    const rfqNumber = `RFQ-${rfqCounter++}`;
+    const jobNumber = nextJobNumber();
+    const createdDate = daysFromNow(job.createdOffsetDays);
+    const rfqId = insertRfq.run(
+      rfqNumber,
+      jobNumber,
+      accountId,
+      contactId,
+      salesRepId,
+      `${job.accountName.split(" ")[0]} ${job.projectSuffix}`,
+      "Won",
+      "Closed",
+      createdDate,
+      daysFromNow(job.createdOffsetDays + 20),
+      daysFromNow(job.createdOffsetDays + 35)
+    ).lastInsertRowid;
+
+    insertActivity.run(rfqId, accountId, salesRepId, "Status Change", `RFQ ${rfqNumber} created and assigned.`, createdDate);
+
+    // Flattened, RFQ-wide line item order (job.lines) — each line records
+    // which vendor wins it (line.wins); every vendor in job.vendors quotes
+    // a price for every line (see additionalJobFixtures.js comment).
+    const lineItems = job.lines.map((line) => {
+      const c = catalogLineByKey[line.key];
+      const lineId = insertRfqLine.run(
+        rfqId, materialIdByName[c.material], productFormIdByName[c.form], standardIdByCode[c.standard],
+        c.description, line.quantity, c.unit, c.length_m
+      ).lastInsertRowid;
+
+      const itemNumber = buildItemNumber({
+        formCode: formCodeForLineItem(c.form, c.description),
+        materialCode: materialCodeForName(c.material),
+        year: itemNumberYear,
+        sequence: itemNumberSequence++,
+      });
+      insertItemNumber.run(
+        itemNumber, lineId, productFormIdByName[c.form], materialIdByName[c.material], c.description, "Active", createdDate
+      );
+
+      return { id: lineId, quantity: line.quantity, wins: line.wins };
+    });
+
+    // Customer sell price is always derived from the WINNING vendor's own
+    // USD-converted buy cost (never the comparison-only prices from a
+    // non-winning vendor) with a flat ~25% markup on top — guarantees sell
+    // price lands above cost price on every line, rather than risking a
+    // hand-picked number landing below it.
+    const quoteNumber = `Q-${quoteCounter++}`;
+    const quoteSentDate = daysFromNow(job.quoteSentOffsetDays);
+    const quoteId = insertQuote.run(
+      quoteNumber, rfqId, 1, "Accepted", quoteSentDate, daysFromNow(job.quoteSentOffsetDays + 30), daysFromNow(job.quoteSentOffsetDays + 25)
+    ).lastInsertRowid;
+    lineItems.forEach((li, j) => {
+      const winningVendor = job.vendors.find((v) => v.supplierIndex === li.wins);
+      const buyUsd = toUsd(winningVendor.unitPrices[j], winningVendor.currency, rateMap);
+      const sellPriceUsd = Math.round(buyUsd * 1.25 * 100) / 100;
+      insertQuoteLine.run(quoteId, li.id, sellPriceUsd, winningVendor.leadTimeDays, 18.5);
+      li.sellPriceUsd = sellPriceUsd;
+    });
+    insertActivity.run(rfqId, accountId, salesRepId, "Note", `Quote ${quoteNumber} issued against ${rfqNumber}.`, quoteSentDate);
+
+    // One scenario entry per vendor — each quotes every line in `lineItems`
+    // (some are comparison-only), matching how seedSuppliersForRfq already
+    // works for the existing multi-vendor Barrow job above.
+    const scenario = job.vendors.map((vendor) => ({
+      supplierIndex: vendor.supplierIndex,
+      outreachStatus: "Quoted",
+      availability: vendor.availability,
+      leadTimeDays: vendor.leadTimeDays,
+      unitPrices: vendor.unitPrices,
+      currency: vendor.currency,
+      estimatedTransitDays: vendor.estimatedTransitDays,
+    }));
+    const sourcingSpec = lineItems.map((li) => li.wins);
+
+    seedSuppliersForRfq(
+      db,
+      supplierIds,
+      {
+        rfqId,
+        lineItems,
+        quoteId,
+        dates: {
+          sentDate: quoteSentDate,
+          receivedDate: daysFromNow(job.quoteSentOffsetDays + 3),
+          validUntil: daysFromNow(job.quoteSentOffsetDays + 60),
+          selectedDate: daysFromNow(job.quoteSentOffsetDays + 5),
+        },
+        nextInquiryNumber,
+      },
+      scenario,
+      sourcingSpec
+    );
+
+    const totalValue = lineItems.reduce((sum, li) => sum + li.sellPriceUsd * li.quantity, 0);
+    const poId = insertPurchaseOrder.run(
+      quoteId, `PO-${poCounter++}`, job.customerPoReference, daysFromNow(job.poReceivedOffsetDays), totalValue
+    ).lastInsertRowid;
+
+    // The order's own pipeline_stage reflects whichever vendor is furthest
+    // along, for a multi-vendor order (see MILESTONE_STAGE_RANK above).
+    const furthestVendor = job.vendors.reduce((a, b) =>
+      MILESTONE_STAGE_RANK[b.milestoneStage] > MILESTONE_STAGE_RANK[a.milestoneStage] ? b : a
+    );
+    const orderId = insertOrder.run(
+      poId, daysFromNow(job.poReceivedOffsetDays), ORDER_PIPELINE_STAGE_BY_MILESTONE_STAGE[furthestVendor.milestoneStage]
+    ).lastInsertRowid;
+
+    const lineItemIds = lineItems.map((li) => li.id);
+    const sourcingPlaceholders = lineItemIds.map(() => "?").join(",");
+    const sourcingRows = db
+      .prepare(
+        `SELECT id, rfq_line_item_id FROM line_item_sourcing
+         WHERE rfq_line_item_id IN (${sourcingPlaceholders}) AND status = 'Selected'`
+      )
+      .all(...lineItemIds);
+    const sourcingIdByLineItemId = new Map(sourcingRows.map((r) => [r.rfq_line_item_id, r.id]));
+
+    const orderLineItemIdByLineItemId = new Map(
+      lineItems.map((li) => [li.id, insertOrderLineItem.run(orderId, li.id, sourcingIdByLineItemId.get(li.id)).lastInsertRowid])
+    );
+
+    // One shipment per vendor — each covers only the lines that vendor
+    // actually won.
+    job.vendors.forEach((vendor) => {
+      const vendorSupplierId = supplierIds[vendor.supplierIndex];
+      const vendorLineItems = lineItems.filter((li) => li.wins === vendor.supplierIndex);
+
+      const freightInquiryId = insertFreightInquiry.run(
+        nextFrqNumber(), rfqId, freightForwarderIdByName[vendor.freightForwarderName], quoteSentDate, "Quoted"
+      ).lastInsertRowid;
+      vendorLineItems.forEach((li) => insertFreightInquiryLine.run(freightInquiryId, li.id));
+
+      const freightQuoteId = insertFreightQuote.run(
+        freightInquiryId,
+        vendor.freightQuoteRef,
+        daysFromNow(job.quoteSentOffsetDays + 2),
+        vendor.freightPrice,
+        vendor.freightCurrency,
+        vendor.freightTransitDays,
+        daysFromNow(job.quoteSentOffsetDays + 60),
+        vendor.freightNotes
+      ).lastInsertRowid;
+
+      insertFreightQuoteSelection.run(rfqId, vendorSupplierId, freightQuoteId, daysFromNow(job.quoteSentOffsetDays + 5));
+
+      const preset = MILESTONE_PRESETS_BY_STAGE[vendor.milestoneStage];
+      const shipmentId = insertShipment.run(
+        orderId,
+        vendorSupplierId,
+        vendor.freightForwarderName,
+        vendor.trackingNumber,
+        "Ocean",
+        vendor.originCity,
+        "Lakeland, FL",
+        daysFromNow(preset["Transit to Port/Airport"][0]),
+        daysFromNow(preset["Final Delivery"][0]),
+        vendor.milestoneStage === "delivered" ? daysFromNow(preset["Final Delivery"][1]) : null,
+        freightQuoteId
+      ).lastInsertRowid;
+
+      vendorLineItems.forEach((li) => {
+        insertShipmentLineItem.run(shipmentId, orderLineItemIdByLineItemId.get(li.id));
+      });
+
+      MILESTONE_TYPES.forEach((type) => {
+        const [estOffset, actualOffset, notes] = preset[type];
+        insertShipmentMilestone.run(
+          shipmentId, type, daysFromNow(estOffset), actualOffset == null ? null : daysFromNow(actualOffset), notes
+        );
+      });
+    });
+  });
 
   setSchemaVersion.run(SCHEMA_VERSION);
 });

@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 20;
+const SCHEMA_VERSION = 21;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
