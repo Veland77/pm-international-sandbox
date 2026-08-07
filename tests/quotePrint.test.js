@@ -110,6 +110,7 @@ test("getQuoteForPrint returns customer identity and quote metadata — customer
   assert.equal(quote.contact_name, "Test Contact");
   assert.equal(quote.sales_rep_name, "Casey Test");
   assert.equal(quote.freight_sell_price_usd, 75);
+  assert.equal(quote.freight_display_mode, "separate"); // column default — not set explicitly by this fixture's INSERT
 });
 
 test("getQuoteForPrint never includes a buy-price-shaped field, by key or by value", () => {
@@ -119,9 +120,10 @@ test("getQuoteForPrint never includes a buy-price-shaped field, by key or by val
   assert.ok(!JSON.stringify(quote).includes(String(CONFIDENTIAL_BUY_PRICE)));
 });
 
-test("getQuoteLineItemsForPrint returns only description/quantity/unit/sell price — no join path to buy price exists", () => {
+test("getQuoteLineItemsForPrint returns only description/quantity/unit/sell price (plus the line item id, for weight-share matching) — no join path to buy price exists", () => {
   const lineItems = getQuoteLineItemsForPrint(db, quoteId);
   assert.equal(lineItems.length, 1);
+  assert.equal(lineItems[0].rfq_line_item_id, lineItemId);
   assert.equal(lineItems[0].description, '4" Ball Valve');
   assert.equal(lineItems[0].quantity, 10);
   assert.equal(lineItems[0].sell_unit_price_usd, 145);

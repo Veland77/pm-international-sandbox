@@ -15,6 +15,7 @@ const {
   buildFreightLineItem,
   buildLineItemDisplayRows,
   buildLandedLineItemRows,
+  buildLandedPrintLineItems,
   buildTotals,
 } = require("../src/db/marginCalc");
 
@@ -343,4 +344,42 @@ test("buildLandedLineItemRows falls back to the item's own sell price when the f
   const landed = buildLandedLineItemRows(displayRows, freightRow);
   assert.equal(landed[0].buyUnitPriceUsd, 100); // buy price still folds in, it's never null
   assert.equal(landed[0].sellUnitPriceUsd, 130); // sell falls back — nothing to allocate yet
+});
+
+test("buildLandedPrintLineItems folds freight into each item purely by weight share — no cost/price figure needed", () => {
+  // A (10kg x 1 = 10kg) and B (20kg x 1 = 20kg) — 30kg total, so A takes
+  // 1/3 of the $450 freight sell and B takes 2/3, same shares
+  // buildLandedLineItemRows would produce in the single-freight-quote case.
+  const lineItems = [
+    { rfq_line_item_id: "A", quantity: 1, sell_unit_price_usd: 130 },
+    { rfq_line_item_id: "B", quantity: 1, sell_unit_price_usd: 90 },
+  ];
+  const weightByLineItemId = new Map([
+    ["A", 10],
+    ["B", 20],
+  ]);
+
+  const landed = buildLandedPrintLineItems(lineItems, 450, weightByLineItemId);
+  const a = landed.find((li) => li.rfq_line_item_id === "A");
+  const b = landed.find((li) => li.rfq_line_item_id === "B");
+
+  assert.equal(a.sell_unit_price_usd, 130 + 450 * (10 / 30));
+  assert.equal(b.sell_unit_price_usd, 90 + 450 * (20 / 30));
+});
+
+test("buildLandedPrintLineItems splits evenly when no weight data is available for any line — never divides by zero", () => {
+  const lineItems = [
+    { rfq_line_item_id: "A", quantity: 1, sell_unit_price_usd: 100 },
+    { rfq_line_item_id: "B", quantity: 1, sell_unit_price_usd: 100 },
+  ];
+  const landed = buildLandedPrintLineItems(lineItems, 200, new Map());
+  assert.equal(landed[0].sell_unit_price_usd, 100); // 0 share of $200 — unchanged, not NaN
+  assert.equal(landed[1].sell_unit_price_usd, 100);
+});
+
+test("buildLandedPrintLineItems divides a multi-unit line's folded freight share across its own quantity", () => {
+  const lineItems = [{ rfq_line_item_id: "A", quantity: 5, sell_unit_price_usd: 20 }];
+  const weightByLineItemId = new Map([["A", 4]]); // 4kg x 5 units = 20kg, the only line — takes all $100
+  const landed = buildLandedPrintLineItems(lineItems, 100, weightByLineItemId);
+  assert.equal(landed[0].sell_unit_price_usd, 20 + 100 / 5);
 });

@@ -24,10 +24,12 @@ function getNextQuoteNumber(db) {
 }
 
 // lines: [{ rfqLineItemId, sellUnitPriceUsd, leadTimeDays, targetMarginPct }]
-function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines }) {
+// freightDisplayMode: 'separate' or 'included' — the sales rep's choice at
+// save time of how this version's freight should be shown; see schema.js.
+function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines }) {
   const insertQuote = db.prepare(`
-    INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date, freight_sell_price_usd)
-    VALUES (?, ?, ?, 'Draft', ?, ?, ?, ?)
+    INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date, freight_sell_price_usd, freight_display_mode)
+    VALUES (?, ?, ?, 'Draft', ?, ?, ?, ?, ?)
   `);
   const insertLine = db.prepare(`
     INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
@@ -46,7 +48,8 @@ function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellP
       createdDate,
       validUntil,
       promisedDeliveryDate || null,
-      freightSellPriceUsd
+      freightSellPriceUsd,
+      freightDisplayMode
     ).lastInsertRowid;
 
     lines.forEach((line) => {
@@ -67,9 +70,9 @@ function createQuote(db, { rfqId, validUntil, promisedDeliveryDate, freightSellP
 // items are deleted and reinserted rather than updated in place: while
 // still Draft there's no history to preserve, unlike
 // line_item_sourcing/freight_quote_selection.
-function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines }) {
+function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines }) {
   const updateQuote = db.prepare(
-    "UPDATE quotes SET valid_until = ?, promised_delivery_date = ?, freight_sell_price_usd = ? WHERE id = ?"
+    "UPDATE quotes SET valid_until = ?, promised_delivery_date = ?, freight_sell_price_usd = ?, freight_display_mode = ? WHERE id = ?"
   );
   const deleteLines = db.prepare("DELETE FROM quote_line_items WHERE quote_id = ?");
   const insertLine = db.prepare(`
@@ -81,7 +84,7 @@ function updateDraftQuote(db, { quoteId, validUntil, promisedDeliveryDate, freig
     const quote = db.prepare("SELECT status FROM quotes WHERE id = ?").get(quoteId);
     if (!quote || quote.status !== "Draft") return;
 
-    updateQuote.run(validUntil, promisedDeliveryDate || null, freightSellPriceUsd, quoteId);
+    updateQuote.run(validUntil, promisedDeliveryDate || null, freightSellPriceUsd, freightDisplayMode, quoteId);
     deleteLines.run(quoteId);
     lines.forEach((line) => {
       insertLine.run(quoteId, line.rfqLineItemId, line.sellUnitPriceUsd, line.leadTimeDays, line.targetMarginPct);
@@ -105,11 +108,11 @@ function markQuoteAsSent(db, quoteId) {
 // non-Draft, checked explicitly up front for the same reason
 // updateDraftQuote checks the opposite — the route only offers this path
 // once a quote exists and isn't Draft, but this is the real guard.
-function createQuoteVersion(db, { quoteId, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines }) {
+function createQuoteVersion(db, { quoteId, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines }) {
   const supersedeQuote = db.prepare("UPDATE quotes SET status = 'Superseded' WHERE id = ?");
   const insertQuote = db.prepare(`
-    INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date, freight_sell_price_usd)
-    VALUES (?, ?, ?, 'Sent', ?, ?, ?, ?)
+    INSERT INTO quotes (quote_number, rfq_id, version, status, created_date, valid_until, promised_delivery_date, freight_sell_price_usd, freight_display_mode)
+    VALUES (?, ?, ?, 'Sent', ?, ?, ?, ?, ?)
   `);
   const insertLine = db.prepare(`
     INSERT INTO quote_line_items (quote_id, rfq_line_item_id, unit_price_usd, lead_time_days, target_margin_pct)
@@ -130,7 +133,8 @@ function createQuoteVersion(db, { quoteId, validUntil, promisedDeliveryDate, fre
       createdDate,
       validUntil,
       promisedDeliveryDate || null,
-      freightSellPriceUsd
+      freightSellPriceUsd,
+      freightDisplayMode
     ).lastInsertRowid;
 
     lines.forEach((line) => {

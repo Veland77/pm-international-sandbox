@@ -67,12 +67,14 @@ router.get("/:id", (req, res) => {
   const shipmentSizeEstimate = buildShipmentSizeEstimate(allLineItems);
   const displayRowsByLineItemId = new Map(displayRows.map((row) => [row.rfqLineItemId, row]));
 
-  // View-only toggle for the Quote section specifically (never the Line
-  // Items table or Order Summary above, which always stay in the default,
-  // freight-exclusive shape) — not persisted anywhere, so it's always
-  // exactly reconstructible from the same stored numbers either way; see
-  // marginCalc.js's buildLandedLineItemRows for why that's lossless.
-  const freightDisplayMode = req.query.freight === "included" ? "included" : "separate";
+  // The Quote section's own composition (never the Line Items table or
+  // Order Summary above, which always stay in the default, freight-
+  // exclusive shape) — the sales rep's choice, saved on the quote itself
+  // at create/revise time (see schema.js), not a live viewing toggle
+  // anymore. Item/freight sell prices are still stored unfolded either
+  // way; see marginCalc.js's buildLandedLineItemRows for why applying
+  // this at render time is lossless.
+  const freightDisplayMode = quote ? quote.freight_display_mode : "separate";
   const quoteDisplayRows =
     freightDisplayMode === "included" ? buildLandedLineItemRows(displayRows, freightRow) : displayRows;
 

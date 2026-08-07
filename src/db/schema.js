@@ -8,7 +8,7 @@
 // otherwise leaves existing data alone). seed.js compares it against
 // schema_meta on the live disk and does a full wipe + reseed when they
 // differ, since this is disposable fictional demo data, not production data.
-const SCHEMA_VERSION = 22;
+const SCHEMA_VERSION = 23;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
@@ -114,6 +114,16 @@ CREATE TABLE IF NOT EXISTS quotes (
                                    -- item's. Freight's buy price is never stored here, same as every
                                    -- item's buy price — always recalculated live from current sourcing/
                                    -- freight-selection data (see marginCalc.js/lineItemCostQueries.js).
+  freight_display_mode TEXT NOT NULL DEFAULT 'separate', -- 'separate' or 'included' — the sales rep's
+                                   -- choice, made at save time, of whether this version shows freight as
+                                   -- its own line or folded into each item's own sell price. A real part
+                                   -- of what was saved/sent, not a live viewing toggle — item and freight
+                                   -- sell prices above are always stored unfolded either way; this flag
+                                   -- only decides how they're displayed (see marginCalc.js's
+                                   -- buildLandedLineItemRows). Deliberately its own column rather than
+                                   -- inferred from whether freight_sell_price_usd is null — that column
+                                   -- is always populated once a quote is saved through the app, so it
+                                   -- can't double as this signal.
   UNIQUE (quote_number, version)
 );
 

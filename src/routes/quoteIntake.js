@@ -22,6 +22,7 @@ const {
   suggestSellPrice,
   buildFreightLineTotal,
   buildFreightLineItem,
+  buildLandedPrintLineItems,
   FREIGHT_LINE_ITEM_CODE,
 } = require("../db/marginCalc");
 const { createQuote, updateDraftQuote, markQuoteAsSent, createQuoteVersion } = require("../db/quoteBuildQueries");
@@ -122,6 +123,7 @@ router.get("/:id/quote/new", (req, res) => {
       formValues: {
         valid_until: defaultValidUntil,
         promised_delivery_date: existingQuote ? existingQuote.promised_delivery_date || "" : "",
+        freight_display_mode: existingQuote ? existingQuote.freight_display_mode : "separate",
       },
       errors: [],
     })
@@ -146,6 +148,7 @@ router.post("/:id/quote/new", (req, res) => {
   const promisedDeliveryDate = req.body.promised_delivery_date || null;
   const sellPriceFormValues = normalizeSellPriceFields(req.body.sell_price);
   const freightSellRaw = req.body.freight_sell_price;
+  const freightDisplayMode = req.body.freight_display_mode === "included" ? "included" : "separate";
   const confirmNegativeMargin = req.body.confirm_negative_margin === "on";
 
   const sourcedLineItemCount = context.allLineItems.filter((li) => li.supplier_id != null).length;
@@ -183,6 +186,7 @@ router.post("/:id/quote/new", (req, res) => {
         formValues: {
           valid_until: validUntil,
           promised_delivery_date: promisedDeliveryDate,
+          freight_display_mode: freightDisplayMode,
           confirm_negative_margin: confirmNegativeMargin,
         },
         errors,
@@ -205,11 +209,11 @@ router.post("/:id/quote/new", (req, res) => {
   const freightSellPriceUsd = freightRow.sellUnitPriceUsd;
 
   if (mode === "create") {
-    createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
+    createQuote(db, { rfqId: context.rfq.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines });
   } else if (mode === "editDraft") {
-    updateDraftQuote(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
+    updateDraftQuote(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines });
   } else {
-    createQuoteVersion(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, lines });
+    createQuoteVersion(db, { quoteId: existingQuote.id, validUntil, promisedDeliveryDate, freightSellPriceUsd, freightDisplayMode, lines });
   }
 
   res.redirect(`/rfqs/${context.rfq.id}`);
@@ -238,6 +242,10 @@ router.post("/:id/quote/mark-sent", (req, res) => {
 // (:quoteId) rather than always "whatever's latest" — every version,
 // current or superseded, prints its own document for negotiation
 // traceability (see the Quote History list on the RFQ detail page).
+// Renders in whichever freight_display_mode that version was actually
+// saved/sent in — a real, deliberate part of the sent quote now, not a
+// live viewing toggle, so the print doc has to match it rather than
+// always forcing "separate" the way it used to.
 router.get("/:id/quote/:quoteId/print", (req, res) => {
   const db = getDb();
   const rfq = getRfqById(db, req.params.id);
@@ -250,32 +258,41 @@ router.get("/:id/quote/:quoteId/print", (req, res) => {
     return res.status(404).send("Quote not found");
   }
 
-  const lineItems = getQuoteLineItemsForPrint(db, quote.id).map((li) => ({
-    ...li,
-    totalSellUsd: li.sell_unit_price_usd * li.quantity,
-  }));
+  const rawLineItems = getQuoteLineItemsForPrint(db, quote.id);
+  const shipmentSizeLineItems = getQuoteShipmentSizeLineItemsForPrint(db, rfq.id);
 
-  // Always its own line on the printed document, regardless of whichever
-  // freight view happens to be toggled on the live RFQ page — a document
-  // being emailed out doesn't need to track that live-only display state,
-  // and a single freight line is the more conventional format for an
-  // external quote anyway. Same "only shows if actually saved" rule as
-  // everywhere else this quote's freight line appears.
-  const freightLine =
-    quote.freight_sell_price_usd == null
-      ? null
-      : {
-          description: `Freight (${FREIGHT_LINE_ITEM_CODE})`,
-          quantity: 1,
-          unit: "Shipment",
-          sell_unit_price_usd: quote.freight_sell_price_usd,
-          totalSellUsd: quote.freight_sell_price_usd,
-        };
+  let lineItems;
+  let freightLine = null;
+
+  if (quote.freight_display_mode === "included" && quote.freight_sell_price_usd != null) {
+    // Folded into each item — weight-only allocation (see
+    // buildLandedPrintLineItems for why this can't reuse the live
+    // screen's cost-based ratio). No separate Freight row at all.
+    const weightByLineItemId = new Map(shipmentSizeLineItems.map((li) => [li.rfq_line_item_id, li.weight_kg]));
+    lineItems = buildLandedPrintLineItems(rawLineItems, quote.freight_sell_price_usd, weightByLineItemId).map((li) => ({
+      ...li,
+      totalSellUsd: li.sell_unit_price_usd * li.quantity,
+    }));
+  } else {
+    lineItems = rawLineItems.map((li) => ({ ...li, totalSellUsd: li.sell_unit_price_usd * li.quantity }));
+    // Same "only shows if actually saved" rule as an item line — a quote
+    // created before the Freight line existed has no freight_sell_price_usd
+    // yet, so nothing renders here for it rather than a misleading blank row.
+    freightLine =
+      quote.freight_sell_price_usd == null
+        ? null
+        : {
+            description: `Freight (${FREIGHT_LINE_ITEM_CODE})`,
+            quantity: 1,
+            unit: "Shipment",
+            sell_unit_price_usd: quote.freight_sell_price_usd,
+            totalSellUsd: quote.freight_sell_price_usd,
+          };
+  }
 
   const grandTotalUsd =
     lineItems.reduce((sum, li) => sum + li.totalSellUsd, 0) + (freightLine ? freightLine.totalSellUsd : 0);
 
-  const shipmentSizeLineItems = getQuoteShipmentSizeLineItemsForPrint(db, rfq.id);
   const shipmentSizeEstimate = buildShipmentSizeEstimate(shipmentSizeLineItems);
 
   res.send(quotePrintPage({ quote, lineItems, freightLine, grandTotalUsd, shipmentSizeEstimate }));

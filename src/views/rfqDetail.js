@@ -380,21 +380,16 @@ function supplierComparisonSection(rows) {
     </div>`;
 }
 
-// freightDisplayMode: "separate" (default, freight is its own row) or
-// "included" (freight folded into each item's own buy/sell/margin, no
-// separate row) — a pure view toggle, not saved anywhere. quoteDisplayRows
-// is already the right shape for whichever mode is active (see rfqs.js:
-// buildLandedLineItemRows for "included", plain displayRows otherwise) —
-// this function just renders whatever it's given, same as before.
-function freightViewToggle(rfqId, freightDisplayMode) {
-  const separateActive = freightDisplayMode !== "included";
-  return `
-    <p>
-      View freight:
-      <a href="/rfqs/${rfqId}?freight=separate"${separateActive ? ' style="font-weight:700;"' : ""}>As its own line</a>
-      &middot;
-      <a href="/rfqs/${rfqId}?freight=included"${!separateActive ? ' style="font-weight:700;"' : ""}>Included in items</a>
-    </p>`;
+// freightDisplayMode: "separate" (freight is its own row) or "included"
+// (freight folded into each item's own buy/sell/margin, no separate
+// row) — the sales rep's own choice, saved on the quote at create/revise
+// time (schema.js's freight_display_mode), not a live viewing toggle
+// anymore. quoteDisplayRows is already the right shape for whichever
+// mode was saved (see rfqs.js: buildLandedLineItemRows for "included",
+// plain displayRows otherwise) — this just labels which one is showing.
+function freightDisplayModeNote(freightDisplayMode) {
+  const label = freightDisplayMode === "included" ? "included in item prices" : "as its own line";
+  return `<p style="color: var(--color-text-muted);">Freight shown: ${label}</p>`;
 }
 
 function quoteActions(rfq, quote, order) {
@@ -550,7 +545,7 @@ function quoteSection(rfq, quote, quoteDisplayRows, freightRow, totals, anySourc
     <div class="card">
       <h2>Quote ${escapeHtml(quote.quote_number)} (v${escapeHtml(quote.version)})</h2>
       <p>Status: ${escapeHtml(quote.status)} &middot; Created: ${escapeHtml(formatDate(quote.created_date))} &middot; Valid until: ${escapeHtml(formatDate(quote.valid_until))}</p>
-      ${freightViewToggle(rfq.id, freightDisplayMode)}
+      ${freightDisplayModeNote(freightDisplayMode)}
       <table>
         <thead>
           <tr><th>Description</th><th>Qty</th><th>Unit</th><th>Buy Price</th><th>Sell Price</th><th>Total Sell Price</th><th>Margin</th></tr>

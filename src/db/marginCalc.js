@@ -306,6 +306,36 @@ function buildLandedLineItemRows(displayRows, freightRow) {
   });
 }
 
+// Print-safe alternative to buildLandedLineItemRows, used only by the
+// customer-facing print document (quoteIntake.js's print route) when a
+// quote's saved freight_display_mode is 'included'. That document's
+// queries (quotePrintQueries.js) deliberately have no join path to buy
+// price or freight cost at all — so unlike the live screen view, this
+// can't use a cost-based weight-share ratio (buildLandedLineItemRows'
+// freightUnitUsd/freightBuyTotal, derived from each freight quote's own
+// price). This folds using physical weight alone instead. In the common
+// single-freight-quote case that's the exact same split as the screen
+// view (freight quote price cancels out of the ratio algebraically); if
+// a quote spans multiple freight quotes at different per-kg rates, this
+// is a close weight-based approximation rather than an exact match —
+// the tradeoff for keeping this document's confidentiality guarantee
+// intact (never let freight cost data reach it either).
+// lineItems: [{ rfq_line_item_id, quantity, sell_unit_price_usd }]
+// weightByLineItemId: Map<rfqLineItemId, weightKg>
+function buildLandedPrintLineItems(lineItems, freightSellTotal, weightByLineItemId) {
+  const totalWeight = lineItems.reduce(
+    (sum, li) => sum + (weightByLineItemId.get(li.rfq_line_item_id) || 0) * li.quantity,
+    0
+  );
+
+  return lineItems.map((li) => {
+    const lineWeight = (weightByLineItemId.get(li.rfq_line_item_id) || 0) * li.quantity;
+    const share = totalWeight > 0 ? lineWeight / totalWeight : 0;
+    const landedSellUnitPriceUsd = li.sell_unit_price_usd + (freightSellTotal * share) / li.quantity;
+    return { ...li, sell_unit_price_usd: landedSellUnitPriceUsd };
+  });
+}
+
 module.exports = {
   toSourcedLineItems,
   buildLineCosts,
@@ -317,5 +347,6 @@ module.exports = {
   buildFreightLineItem,
   buildLineItemDisplayRows,
   buildLandedLineItemRows,
+  buildLandedPrintLineItems,
   buildTotals,
 };

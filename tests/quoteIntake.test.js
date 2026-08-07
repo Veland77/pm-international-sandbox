@@ -96,6 +96,7 @@ test("createQuote creates a Draft quote with only the sourced line, plus the fre
     validUntil: "2026-03-01",
     promisedDeliveryDate: "2026-04-01",
     freightSellPriceUsd: 45,
+    freightDisplayMode: "separate",
     lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 120, leadTimeDays: 12, targetMarginPct: 20 }],
   });
 
@@ -105,6 +106,7 @@ test("createQuote creates a Draft quote with only the sourced line, plus the fre
   assert.equal(quote.status, "Draft");
   assert.equal(quote.quote_number, "Q-5001");
   assert.equal(quote.freight_sell_price_usd, 45);
+  assert.equal(quote.freight_display_mode, "separate");
 
   const lines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(quoteId);
   assert.equal(lines.length, 1);
@@ -112,12 +114,13 @@ test("createQuote creates a Draft quote with only the sourced line, plus the fre
   assert.equal(lines[0].unit_price_usd, 120);
 });
 
-test("updateDraftQuote replaces the line items in place and the freight sell price — no second quotes row created", () => {
+test("updateDraftQuote replaces the line items in place and the freight sell price/display mode — no second quotes row created", () => {
   updateDraftQuote(db, {
     quoteId,
     validUntil: "2026-03-15",
     promisedDeliveryDate: "2026-04-01",
     freightSellPriceUsd: 52,
+    freightDisplayMode: "included",
     lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 135, leadTimeDays: 12, targetMarginPct: 22 }],
   });
 
@@ -127,6 +130,7 @@ test("updateDraftQuote replaces the line items in place and the freight sell pri
   const quote = db.prepare("SELECT * FROM quotes WHERE id = ?").get(quoteId);
   assert.equal(quote.valid_until, "2026-03-15");
   assert.equal(quote.freight_sell_price_usd, 52);
+  assert.equal(quote.freight_display_mode, "included");
 
   const lines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(quoteId);
   assert.equal(lines.length, 1);
@@ -168,6 +172,7 @@ test("createQuoteVersion is a no-op when the quote is still Draft", () => {
     rfqId,
     validUntil: "2026-05-01",
     freightSellPriceUsd: 40,
+    freightDisplayMode: "separate",
     lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 150, leadTimeDays: 12, targetMarginPct: 20 }],
   });
 
@@ -193,6 +198,7 @@ test("createQuoteVersion supersedes the prior version and creates the next versi
     validUntil: "2026-07-01",
     promisedDeliveryDate: "2026-08-01",
     freightSellPriceUsd: 60,
+    freightDisplayMode: "separate",
     lines: [{ rfqLineItemId: sourcedLineId, sellUnitPriceUsd: 180, leadTimeDays: 12, targetMarginPct: 25 }],
   });
 
@@ -207,6 +213,7 @@ test("createQuoteVersion supersedes the prior version and creates the next versi
   assert.equal(newQuote.status, "Sent");
   assert.equal(newQuote.valid_until, "2026-07-01");
   assert.equal(newQuote.freight_sell_price_usd, 60);
+  assert.equal(newQuote.freight_display_mode, "separate"); // independent choice per version — the prior version was 'included'
 
   const newLines = db.prepare("SELECT * FROM quote_line_items WHERE quote_id = ?").all(newQuoteId);
   assert.equal(newLines.length, 1);

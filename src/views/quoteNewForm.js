@@ -147,6 +147,12 @@ function quoteNewFormPage({
           <span class="field-label">Promised Delivery Date (optional)</span>
           <input type="date" name="promised_delivery_date" value="${escapeHtml(formValues.promised_delivery_date || "")}">
         </label>
+        <div class="field">
+          <span class="field-label">Freight Display</span>
+          <label><input type="radio" name="freight_display_mode" value="separate"${formValues.freight_display_mode !== "included" ? " checked" : ""}> As its own line</label>
+          <label><input type="radio" name="freight_display_mode" value="included"${formValues.freight_display_mode === "included" ? " checked" : ""}> Included in items</label>
+          <p style="font-size: 0.85rem; color: var(--color-text-muted);">How this version shows freight to the customer — the item and freight sell prices you enter below stay the same either way, this just decides how they're presented.</p>
+        </div>
       </div>
 
       <div class="card">
